@@ -194,6 +194,25 @@ public sealed partial class Cpu
         _ops[0xD1] = POP_DE;
         _ops[0xE1] = POP_HL;
         _ops[0xF1] = POP_AF;
+
+        // Control Flow
+        _ops[0xC3] = JP_nn;
+        _ops[0x18] = JR_e;
+        _ops[0xCD] = CALL_nn;
+        _ops[0xC9] = RET;
+
+        for (int cc = 0; cc < 8; cc++)
+        {
+            int condition = cc;
+            _ops[0xC2 | (cc << 3)] = () => JP_cc_nn(condition);
+            _ops[0xC4 | (cc << 3)] = () => CALL_cc_nn(condition);
+            _ops[0xC0 | (cc << 3)] = () => RET_cc(condition);
+            
+            if (cc < 4) // JR only has 4 conditions: NZ, Z, NC, C
+            {
+                _ops[0x20 | (cc << 3)] = () => JR_cc_e(condition);
+            }
+        }
     }
 
     private void NOP() { TotalCycles += 4UL; }

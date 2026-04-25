@@ -41,4 +41,5 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 *   [x] 16-bit Direct Memory Transfer (LD (nn), HL and LD HL, (nn)).
 *   [x] 16-bit Arithmetic (ADD HL, ss).
 *   [x] Stack Operations (PUSH, POP).
-*   [ ] Control Flow (Jumps/Calls).
+*   [x] Control Flow (JP, JR, CALL, RET - unconditional and conditional).
+*   [ ] Bitwise & Shifts (CB Prefix).
