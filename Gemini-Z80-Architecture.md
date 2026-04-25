@@ -37,5 +37,8 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 *   [x] 8-bit Arithmetic Unit (ADD, ADC, SUB, SBC).
 *   [x] 8-bit Logical Operations (AND, OR, XOR, CP).
 *   [x] 8-bit Increment/Decrement (INC, DEC).
-*   [ ] Stack Operations.
+*   [x] 16-bit Immediate Loads (LD dd, nn).
+*   [x] 16-bit Direct Memory Transfer (LD (nn), HL and LD HL, (nn)).
+*   [x] 16-bit Arithmetic (ADD HL, ss).
+*   [x] Stack Operations (PUSH, POP).
 *   [ ] Control Flow (Jumps/Calls).

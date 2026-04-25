@@ -263,4 +263,35 @@ public class ArithmeticTests : CpuFixture
         Assert.False(Cpu.FlagN);
         Assert.True(Cpu.FlagPV); // Parity of 0x11 (2 bits) is even
     }
+
+    [Fact]
+    public void ADD_HL_BC_Basic16BitAddition()
+    {
+        Cpu.HL = 0x1000;
+        Cpu.BC = 0x0200;
+        Cpu.FlagZ = true; // Should remain unchanged
+        Load(0x0000, 0x09); // ADD HL, BC
+        
+        Step();
+        
+        Assert.Equal(0x1200, Cpu.HL);
+        Assert.False(Cpu.FlagC);
+        Assert.False(Cpu.FlagN);
+        Assert.True(Cpu.FlagZ); // Unchanged
+        Assert.Equal(11UL, Cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void ADD_HL_HL_SetsCarryAndHalfCarry()
+    {
+        Cpu.HL = 0x8800; // Bit 15 and bit 11 set
+        Load(0x0000, 0x29); // ADD HL, HL
+        
+        Step();
+        
+        Assert.Equal(0x1000, Cpu.HL);
+        Assert.True(Cpu.FlagC); // Carry from bit 15
+        Assert.True(Cpu.FlagH); // Half-carry from bit 11
+        Assert.False(Cpu.FlagN);
+    }
 }

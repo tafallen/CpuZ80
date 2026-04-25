@@ -72,6 +72,20 @@ public sealed partial class Cpu
         TotalCycles += 4UL; // Base cycles for SUB/SBC A, r
     }
 
+    private void DoAdd16(ushort val)
+    {
+        int res = HL + val;
+        
+        FlagN = false;
+        // H is set if carry from bit 11
+        FlagH = ((HL & 0x0FFF) + (val & 0x0FFF) > 0x0FFF);
+        FlagC = res > 0xFFFF;
+        
+        HL = (ushort)(res & 0xFFFF);
+        
+        TotalCycles += 11UL;
+    }
+
     private void DoAnd(byte val)
     {
         A &= val;

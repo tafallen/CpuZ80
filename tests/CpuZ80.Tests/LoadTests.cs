@@ -86,4 +86,44 @@ public class LoadTests : CpuFixture
         Assert.Equal(0x33, Cpu.H);
         Assert.Equal(0x44, Cpu.L);
     }
+
+    [Fact]
+    public void LD_BC_nn_LoadsImmediate16BitValue()
+    {
+        Load(0x0000, 0x01, 0x34, 0x12); // LD BC, $1234 (little-endian)
+        Step();
+        Assert.Equal(0x1234, Cpu.BC);
+        Assert.Equal(10UL, Cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void LD_SP_nn_LoadsStackPointer()
+    {
+        Load(0x0000, 0x31, 0xFF, 0xFF); // LD SP, $FFFF
+        Step();
+        Assert.Equal(0xFFFF, Cpu.SP);
+        Assert.Equal(10UL, Cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void LD_nn_ptr_HL_Stores16BitValueToMemory()
+    {
+        Cpu.HL = 0x1234;
+        Load(0x0000, 0x22, 0x00, 0x80); // LD ($8000), HL
+        Step();
+        Assert.Equal(0x34, Ram.Read(0x8000));
+        Assert.Equal(0x12, Ram.Read(0x8001));
+        Assert.Equal(16UL, Cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void LD_HL_nn_ptr_Loads16BitValueFromMemory()
+    {
+        Ram.Write(0x9000, 0x55);
+        Ram.Write(0x9001, 0xAA);
+        Load(0x0000, 0x2A, 0x00, 0x90); // LD HL, ($9000)
+        Step();
+        Assert.Equal(0xAA55, Cpu.HL);
+        Assert.Equal(16UL, Cpu.TotalCycles);
+    }
 }

@@ -63,6 +63,22 @@ public sealed partial class Cpu
         _ops[0x00] = NOP;
         _ops[0x08] = EX_AF_AF;
         _ops[0xD9] = EXX;
+
+        // LD dd, nn
+        _ops[0x01] = () => { BC = FetchWord(); TotalCycles += 10UL; };
+        _ops[0x11] = () => { DE = FetchWord(); TotalCycles += 10UL; };
+        _ops[0x21] = () => { HL = FetchWord(); TotalCycles += 10UL; };
+        _ops[0x31] = () => { SP = FetchWord(); TotalCycles += 10UL; };
+
+        // LD (nn), HL and LD HL, (nn)
+        _ops[0x22] = () => { WriteWord(FetchWord(), HL); TotalCycles += 16UL; };
+        _ops[0x2A] = () => { HL = ReadWord(FetchWord()); TotalCycles += 16UL; };
+
+        // ADD HL, ss
+        _ops[0x09] = () => DoAdd16(BC);
+        _ops[0x19] = () => DoAdd16(DE);
+        _ops[0x29] = () => DoAdd16(HL);
+        _ops[0x39] = () => DoAdd16(SP);
         
         // LD r, n
         _ops[0x06] = () => { B = Fetch(); TotalCycles += 7UL; };
@@ -167,6 +183,17 @@ public sealed partial class Cpu
         _ops[0xEE] = () => { DoXor(Fetch()); TotalCycles += 3UL; }; // XOR n
         _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 3UL; }; // OR n
         _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 3UL; }; // CP n
+
+        // Stack instructions
+        _ops[0xC5] = PUSH_BC;
+        _ops[0xD5] = PUSH_DE;
+        _ops[0xE5] = PUSH_HL;
+        _ops[0xF5] = PUSH_AF;
+
+        _ops[0xC1] = POP_BC;
+        _ops[0xD1] = POP_DE;
+        _ops[0xE1] = POP_HL;
+        _ops[0xF1] = POP_AF;
     }
 
     private void NOP() { TotalCycles += 4UL; }
@@ -196,6 +223,26 @@ public sealed partial class Cpu
     }
 
     private byte Fetch() => _bus.Read(PC++);
+
+    private ushort FetchWord()
+    {
+        byte lo = Fetch();
+        byte hi = Fetch();
+        return (ushort)((hi << 8) | lo);
+    }
+
+    private ushort ReadWord(ushort addr)
+    {
+        byte lo = _bus.Read(addr);
+        byte hi = _bus.Read((ushort)(addr + 1));
+        return (ushort)((hi << 8) | lo);
+    }
+
+    private void WriteWord(ushort addr, ushort val)
+    {
+        _bus.Write(addr, (byte)(val & 0xFF));
+        _bus.Write((ushort)(addr + 1), (byte)(val >> 8));
+    }
 
     private byte GetReg(int index) => index switch
     {
