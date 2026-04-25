@@ -74,6 +74,20 @@ public sealed partial class Cpu
         _ops[0x36] = () => { _bus.Write(HL, Fetch()); TotalCycles += 10UL; };
         _ops[0x3E] = () => { A = Fetch(); TotalCycles += 7UL; };
 
+        // INC r
+        for (int r = 0; r < 8; r++)
+        {
+            int reg = r;
+            _ops[0x04 | (r << 3)] = () => { SetReg(reg, DoInc(GetReg(reg))); TotalCycles += (reg == 6) ? 11UL : 4UL; };
+        }
+
+        // DEC r
+        for (int r = 0; r < 8; r++)
+        {
+            int reg = r;
+            _ops[0x05 | (r << 3)] = () => { SetReg(reg, DoDec(GetReg(reg))); TotalCycles += (reg == 6) ? 11UL : 4UL; };
+        }
+
         // LD r, r'
         for (int d = 0; d < 8; d++)
         {
@@ -101,6 +115,58 @@ public sealed partial class Cpu
             int src = s;
             _ops[0x88 | s] = () => { DoAdc(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
         }
+
+        // SUB r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0x90 | s] = () => { DoSub(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // SBC A, r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0x98 | s] = () => { DoSbc(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // AND r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0xA0 | s] = () => { DoAnd(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // XOR r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0xA8 | s] = () => { DoXor(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // OR r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0xB0 | s] = () => { DoOr(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // CP r
+        for (int s = 0; s < 8; s++)
+        {
+            int src = s;
+            _ops[0xB8 | s] = () => { DoCp(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+        }
+
+        // Immediate arithmetic
+        _ops[0xC6] = () => { DoAdd(Fetch()); TotalCycles += 3UL; }; // ADD A, n (4+3=7)
+        _ops[0xCE] = () => { DoAdc(Fetch()); TotalCycles += 3UL; }; // ADC A, n (4+3=7)
+        _ops[0xD6] = () => { DoSub(Fetch()); TotalCycles += 3UL; }; // SUB n
+        _ops[0xDE] = () => { DoSbc(Fetch()); TotalCycles += 3UL; }; // SBC A, n
+        _ops[0xE6] = () => { DoAnd(Fetch()); TotalCycles += 3UL; }; // AND n
+        _ops[0xEE] = () => { DoXor(Fetch()); TotalCycles += 3UL; }; // XOR n
+        _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 3UL; }; // OR n
+        _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 3UL; }; // CP n
     }
 
     private void NOP() { TotalCycles += 4UL; }

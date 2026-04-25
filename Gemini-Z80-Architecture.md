@@ -33,7 +33,9 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 *   [x] Primary and Alternate register files.
 *   [x] NOP, LD r, n, LD r, r' instructions.
 *   [x] Register Exchange instructions (EX AF, AF' and EXX).
-*   [ ] Status Flag Register (F) and flag logic.
-*   [ ] Arithmetic Unit (ALU).
+*   [x] Status Flag Register (F) and flag logic.
+*   [x] 8-bit Arithmetic Unit (ADD, ADC, SUB, SBC).
+*   [x] 8-bit Logical Operations (AND, OR, XOR, CP).
+*   [x] 8-bit Increment/Decrement (INC, DEC).
 *   [ ] Stack Operations.
 *   [ ] Control Flow (Jumps/Calls).
