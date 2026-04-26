@@ -43,4 +43,5 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 *   [x] Stack Operations (PUSH, POP).
 *   [x] Control Flow (JP, JR, CALL, RET - unconditional and conditional).
 *   [x] Bitwise & Shifts (CB Prefix - 256 opcodes).
-*   [ ] Extended Instructions (ED Prefix).
+*   [x] Extended Instructions (ED Prefix - block ops, 16-bit ADC/SBC, system regs).
+*   [ ] Index Registers (DD/FD Prefixes).

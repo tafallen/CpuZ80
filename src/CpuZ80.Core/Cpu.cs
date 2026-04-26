@@ -52,6 +52,7 @@ public sealed partial class Cpu
         _bus = bus;
         BuildDispatchTable();
         BuildCbDispatchTable();
+        BuildEdDispatchTable();
     }
 
     private void BuildDispatchTable()
@@ -64,6 +65,7 @@ public sealed partial class Cpu
         _ops[0x00] = NOP;
         _ops[0x08] = EX_AF_AF;
         _ops[0xCB] = HandleCB;
+        _ops[0xED] = HandleED;
         _ops[0xD9] = EXX;
 
         // LD dd, nn
