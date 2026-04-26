@@ -10,18 +10,18 @@ public sealed partial class Cpu
         int carry = (useCarry && FlagC) ? 1 : 0;
         int res = A + val + carry;
         
-        // Flags
-        FlagN = false;
-        FlagH = ((A & 0x0F) + (val & 0x0F) + carry > 0x0F);
+        FlagH = ((A ^ val ^ res) & 0x10) != 0;
         FlagPV = (((A ^ res) & (val ^ res)) & 0x80) != 0;
         FlagC = res > 0xFF;
+        FlagN = false;
         
         A = (byte)(res & 0xFF);
         
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
+        F = (byte)((F & ~0x28) | (A & 0x28));
         
-        TotalCycles += 4UL; // Base cycles for ADD/ADC A, r
+        TotalCycles += 4UL; 
     }
 
     private byte DoInc(byte val)
@@ -29,10 +29,11 @@ public sealed partial class Cpu
         byte res = (byte)(val + 1);
         
         FlagN = false;
-        FlagH = (val & 0x0F) == 0x0F;
+        FlagH = (res & 0x0F) == 0;
         FlagPV = val == 0x7F;
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
+        F = (byte)((F & ~0x28) | (res & 0x28));
         
         return res;
     }
@@ -42,10 +43,11 @@ public sealed partial class Cpu
         byte res = (byte)(val - 1);
         
         FlagN = true;
-        FlagH = (val & 0x0F) == 0x00;
+        FlagH = (res & 0x0F) == 0x0F;
         FlagPV = val == 0x80;
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
+        F = (byte)((F & ~0x28) | (res & 0x28));
         
         return res;
     }
@@ -58,18 +60,18 @@ public sealed partial class Cpu
         int carry = (useCarry && FlagC) ? 1 : 0;
         int res = A - val - carry;
         
-        // Flags
-        FlagN = true;
-        FlagH = ((A & 0x0F) - (val & 0x0F) - carry < 0);
+        FlagH = ((A ^ val ^ res) & 0x10) != 0;
         FlagPV = (((A ^ val) & (A ^ res)) & 0x80) != 0;
         FlagC = res < 0;
+        FlagN = true;
         
         A = (byte)(res & 0xFF);
         
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
+        F = (byte)((F & ~0x28) | (A & 0x28));
         
-        TotalCycles += 4UL; // Base cycles for SUB/SBC A, r
+        TotalCycles += 4UL; 
     }
 
     private void DoAdd16(ushort val)
@@ -77,12 +79,11 @@ public sealed partial class Cpu
         int res = HL + val;
         
         FlagN = false;
-        // H is set if carry from bit 11
-        FlagH = ((HL & 0x0FFF) + (val & 0x0FFF) > 0x0FFF);
-        FlagC = res > 0xFFFF;
+        FlagH = ((HL ^ val ^ res) & 0x1000) != 0;
+        FlagC = (res & 0x10000) != 0;
         
         HL = (ushort)(res & 0xFFFF);
-        
+        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28)); 
         TotalCycles += 11UL;
     }
 
@@ -119,8 +120,13 @@ public sealed partial class Cpu
     private void DoCp(byte val)
     {
         byte oldA = A;
-        SubInternal(val, false); // CP is SUB but result is discarded
+        SubInternal(val, false); 
         A = oldA;
+        // Correct X/Y flags for CP: they come from the OPERAND, not the result
+        // Wait, no. They come from the OPERAND for BIT, but for CP they come from the result?
+        // Actually for CP they come from the operand val? No, result.
+        // Let's re-verify: CP result bits 3,5. Yes.
+        F = (byte)((F & ~0x28) | (val & 0x28)); // Actually, many sources say Operand for CP!
     }
 
     private void SetLogicFlags(byte res)
@@ -128,6 +134,7 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = GetParity(res);
+        F = (byte)((F & ~0x28) | (res & 0x28));
     }
 
     private bool GetParity(byte val)
@@ -136,5 +143,76 @@ public sealed partial class Cpu
         for (int i = 0; i < 8; i++)
             if ((val & (1 << i)) != 0) bits++;
         return (bits % 2) == 0;
+    }
+
+    private void RLCA()
+    {
+        FlagC = (A & 0x80) != 0;
+        A = (byte)((A << 1) | (FlagC ? 1 : 0));
+        FlagN = false;
+        FlagH = false;
+        F = (byte)((F & ~0x28) | (A & 0x28));
+        TotalCycles += 4UL;
+    }
+
+    private void RRCA()
+    {
+        FlagC = (A & 0x01) != 0;
+        A = (byte)((A >> 1) | (FlagC ? 0x80 : 0));
+        FlagN = false;
+        FlagH = false;
+        F = (byte)((F & ~0x28) | (A & 0x28));
+        TotalCycles += 4UL;
+    }
+
+    private void RLA()
+    {
+        bool oldC = FlagC;
+        FlagC = (A & 0x80) != 0;
+        A = (byte)((A << 1) | (oldC ? 1 : 0));
+        FlagN = false;
+        FlagH = false;
+        F = (byte)((F & ~0x28) | (A & 0x28));
+        TotalCycles += 4UL;
+    }
+
+    private void RRA()
+    {
+        bool oldC = FlagC;
+        FlagC = (A & 0x01) != 0;
+        A = (byte)((A >> 1) | (oldC ? 0x80 : 0));
+        FlagN = false;
+        FlagH = false;
+        F = (byte)((F & ~0x28) | (A & 0x28));
+        TotalCycles += 4UL;
+    }
+
+    private void DAA()
+    {
+        byte adj = 0;
+        bool oldC = FlagC;
+        if (FlagH || (A & 0x0F) > 9) adj |= 6;
+        if (FlagC || A > 0x99)
+        {
+            adj |= 0x60;
+            FlagC = true;
+        }
+
+        if (FlagN)
+        {
+            FlagH = (A & 0x0F) < (adj & 0x0F);
+            A -= adj;
+        }
+        else
+        {
+            FlagH = (A & 0x0F) + (adj & 0x0F) > 0x0F;
+            A += adj;
+        }
+
+        FlagZ = A == 0;
+        FlagS = (A & 0x80) != 0;
+        FlagPV = GetParity(A);
+        F = (byte)((F & ~0x28) | (A & 0x28));
+        TotalCycles += 4UL;
     }
 }

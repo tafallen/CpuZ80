@@ -13,9 +13,6 @@ public sealed partial class Cpu
     {
         byte opcode = Fetch();
         
-        // The Z80 index prefixes (DD/FD) basically swap HL for IX/IY in the base table.
-        // Some instructions use a displacement byte, some don't.
-        
         switch (opcode)
         {
             case 0x09: DoAdd16Indexed(ref indexReg, BC); break;
@@ -28,6 +25,10 @@ public sealed partial class Cpu
             case 0x2A: indexReg = ReadWord(FetchWord()); TotalCycles += 20UL; break;
             case 0x23: indexReg++; TotalCycles += 10UL; break;
             case 0x2B: indexReg--; TotalCycles += 10UL; break;
+
+            case 0xE1: indexReg = Pop(); TotalCycles += 14UL; break;
+            case 0xE5: Push(indexReg); TotalCycles += 15UL; break;
+            case 0xF9: SP = indexReg; TotalCycles += 10UL; break;
 
             case 0x34: // INC (IX+d)
                 {
@@ -51,6 +52,8 @@ public sealed partial class Cpu
                 }
                 break;
 
+            case 0xCB: HandleIndexedBitwise(ref indexReg); break;
+
             default:
                 if ((opcode & 0xC0) == 0x40) // LD r, r' block
                 {
@@ -70,14 +73,15 @@ public sealed partial class Cpu
                     }
                     else
                     {
-                        // Fallback to normal LD r, r' but with extra cycles for prefix
-                        _ops[opcode]();
-                        TotalCycles += 4UL; 
+                        // 8-bit halves of IX/IY support
+                        byte val = GetRegIndexed(src, ref indexReg);
+                        SetRegIndexed(dest, val, ref indexReg);
+                        TotalCycles += 8UL; 
                     }
                 }
                 else if ((opcode & 0xF0) == 0x80 || (opcode & 0xF0) == 0x90 || (opcode & 0xF0) == 0xA0 || (opcode & 0xF0) == 0xB0)
                 {
-                    // Arithmetic block (ADD, ADC, SUB, SBC, AND, XOR, OR, CP)
+                    // Arithmetic block
                     if ((opcode & 0x07) == 6)
                     {
                         ushort addr = (ushort)(indexReg + (sbyte)Fetch());
@@ -87,42 +91,96 @@ public sealed partial class Cpu
                     }
                     else
                     {
-                        _ops[opcode]();
-                        TotalCycles += 4UL;
+                        byte val = GetRegIndexed(opcode & 0x07, ref indexReg);
+                        ExecuteArithmetic(opcode, val);
+                        TotalCycles += 8UL;
                     }
                 }
                 else
                 {
-                    throw new NotImplementedException($"Indexed Opcode 0x{opcode:X2} not implemented");
+                    _ops[opcode]();
+                    TotalCycles += 4UL;
                 }
                 break;
         }
+    }
+
+    private byte GetRegIndexed(int index, ref ushort indexReg)
+    {
+        if (index == 4) return (byte)(indexReg >> 8);
+        if (index == 5) return (byte)(indexReg & 0xFF);
+        return GetReg(index);
+    }
+
+    private void SetRegIndexed(int index, byte val, ref ushort indexReg)
+    {
+        if (index == 4) indexReg = (ushort)((val << 8) | (indexReg & 0xFF));
+        else if (index == 5) indexReg = (ushort)((indexReg & 0xFF00) | val);
+        else SetReg(index, val);
     }
 
     private void DoAdd16Indexed(ref ushort reg, ushort val)
     {
         int res = reg + val;
         FlagN = false;
-        FlagH = ((reg & 0x0FFF) + (val & 0x0FFF) > 0x0FFF);
-        FlagC = res > 0xFFFF;
+        FlagH = (((reg & 0x0FFF) + (val & 0x0FFF)) & 0x1000) != 0;
+        FlagC = (res & 0x10000) != 0;
         reg = (ushort)(res & 0xFFFF);
+        F = (byte)((F & ~0x28) | ((reg >> 8) & 0x28));
         TotalCycles += 15UL;
     }
 
     private void ExecuteArithmetic(byte opcode, byte val)
     {
-        // Internal helper to map opcode to arithmetic action without adding cycles (since HandleIndexed handles timing)
         int type = (opcode >> 3) & 0x07;
         switch (type)
         {
-            case 0: AddInternal(val, false); TotalCycles -= 4UL; break; // ADD
-            case 1: AddInternal(val, true);  TotalCycles -= 4UL; break; // ADC
-            case 2: SubInternal(val, false); TotalCycles -= 4UL; break; // SUB
-            case 3: SubInternal(val, true);  TotalCycles -= 4UL; break; // SBC
-            case 4: A &= val; SetLogicFlags(A); break; // AND
-            case 5: A ^= val; SetLogicFlags(A); break; // XOR
-            case 6: A |= val; SetLogicFlags(A); break; // OR
-            case 7: byte oldA = A; SubInternal(val, false); TotalCycles -= 4UL; A = oldA; break; // CP
+            case 0: AddInternal(val, false); TotalCycles -= 4UL; break;
+            case 1: AddInternal(val, true);  TotalCycles -= 4UL; break;
+            case 2: SubInternal(val, false); TotalCycles -= 4UL; break;
+            case 3: SubInternal(val, true);  TotalCycles -= 4UL; break;
+            case 4: A &= val; SetLogicFlags(A); break;
+            case 5: A ^= val; SetLogicFlags(A); break;
+            case 6: A |= val; SetLogicFlags(A); break;
+            case 7: byte oldA = A; SubInternal(val, false); TotalCycles -= 4UL; A = oldA; break;
         }
     }
-}
+
+    private void HandleIndexedBitwise(ref ushort indexReg)
+    {
+        sbyte d = (sbyte)Fetch();
+        byte opcode = Fetch();
+        ushort addr = (ushort)(indexReg + d);
+        byte val = _bus.Read(addr);
+        int bit = (opcode >> 3) & 0x07;
+        int reg = opcode & 0x07;
+
+        if (opcode < 0x40) // Rotates and Shifts
+        {
+            val = DoShift((opcode >> 3) & 0x07, val);
+            _bus.Write(addr, val);
+            if (reg != 6) SetReg(reg, val);
+            TotalCycles += 23UL;
+        }
+        else if (opcode < 0x80) // BIT
+        {
+            DoBit(bit, val);
+            TotalCycles += 20UL;
+        }
+        else if (opcode < 0xC0) // RES
+        {
+            val = (byte)(val & ~(1 << bit));
+            _bus.Write(addr, val);
+            if (reg != 6) SetReg(reg, val);
+            TotalCycles += 23UL;
+        }
+        else // SET
+        {
+            val = (byte)(val | (1 << bit));
+            _bus.Write(addr, val);
+            if (reg != 6) SetReg(reg, val);
+            TotalCycles += 23UL;
+        }
+    }
+    }
+

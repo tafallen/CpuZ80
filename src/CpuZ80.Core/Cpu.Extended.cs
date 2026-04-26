@@ -24,6 +24,19 @@ public sealed partial class Cpu
         _edOps[0x62] = () => DoSbc16(HL);
         _edOps[0x72] = () => DoSbc16(SP);
 
+        // RRD / RLD
+        _edOps[0x67] = RRD;
+        _edOps[0x6F] = RLD;
+
+        // LD dd, (nn) / LD (nn), dd
+        _edOps[0x4B] = () => { BC = ReadWord(FetchWord()); TotalCycles += 20UL; };
+        _edOps[0x5B] = () => { DE = ReadWord(FetchWord()); TotalCycles += 20UL; };
+        _edOps[0x7B] = () => { SP = ReadWord(FetchWord()); TotalCycles += 20UL; };
+
+        _edOps[0x43] = () => { WriteWord(FetchWord(), BC); TotalCycles += 20UL; };
+        _edOps[0x53] = () => { WriteWord(FetchWord(), DE); TotalCycles += 20UL; };
+        _edOps[0x73] = () => { WriteWord(FetchWord(), SP); TotalCycles += 20UL; };
+
         // LD I, A / LD R, A and vice-versa
         _edOps[0x47] = () => { I = A; TotalCycles += 9UL; };
         _edOps[0x4F] = () => { R = A; TotalCycles += 9UL; };
@@ -34,6 +47,18 @@ public sealed partial class Cpu
         _edOps[0x46] = () => { _interruptMode = 0; TotalCycles += 8UL; };
         _edOps[0x56] = () => { _interruptMode = 1; TotalCycles += 8UL; };
         _edOps[0x5E] = () => { _interruptMode = 2; TotalCycles += 8UL; };
+
+        // Misc
+        _edOps[0x44] = NEG;
+        _edOps[0x45] = RETN;
+        _edOps[0x4D] = RETI;
+        _edOps[0x4C] = NEG; // Documented as alias
+        _edOps[0x54] = NEG;
+        _edOps[0x5C] = NEG;
+        _edOps[0x64] = NEG;
+        _edOps[0x6C] = NEG;
+        _edOps[0x74] = NEG;
+        _edOps[0x7C] = NEG;
 
         // Block Operations
         _edOps[0xA0] = LDI;
@@ -50,13 +75,17 @@ public sealed partial class Cpu
     {
         int carry = FlagC ? 1 : 0;
         int res = HL + val + carry;
+        
         FlagN = false;
-        FlagH = ((HL & 0x0FFF) + (val & 0x0FFF) + carry > 0x0FFF);
+        FlagH = (((HL & 0x0FFF) + (val & 0x0FFF) + carry) & 0x1000) != 0;
         FlagPV = (((HL ^ res) & (val ^ res)) & 0x8000) != 0;
         FlagC = res > 0xFFFF;
+        
         HL = (ushort)(res & 0xFFFF);
+        
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
+        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
         TotalCycles += 15UL;
     }
 
@@ -64,13 +93,17 @@ public sealed partial class Cpu
     {
         int carry = FlagC ? 1 : 0;
         int res = HL - val - carry;
+        
         FlagN = true;
-        FlagH = ((HL & 0x0FFF) - (val & 0x0FFF) - carry < 0);
+        FlagH = (((HL & 0x0FFF) - (val & 0x0FFF) - carry) & 0x1000) != 0;
         FlagPV = (((HL ^ val) & (HL ^ res)) & 0x8000) != 0;
         FlagC = res < 0;
+        
         HL = (ushort)(res & 0xFFFF);
+        
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
+        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
         TotalCycles += 15UL;
     }
 
@@ -166,5 +199,42 @@ public sealed partial class Cpu
     {
         byte opcode = Fetch();
         _edOps[opcode]();
+    }
+
+    private void NEG()
+    {
+        byte val = A;
+        A = 0;
+        SubInternal(val, false);
+        TotalCycles += 4UL; // (8 total including prefix fetch)
+    }
+
+    private void RETI() { RET(); TotalCycles += 4UL; }
+    private void RETN() { RET(); TotalCycles += 4UL; }
+
+    private void RRD()
+    {
+        byte mem = _bus.Read(HL);
+        byte lowA = (byte)(A & 0x0F);
+        A = (byte)((A & 0xF0) | (mem & 0x0F));
+        mem = (byte)((lowA << 4) | (mem >> 4));
+        _bus.Write(HL, mem);
+        FlagH = false;
+        FlagN = false;
+        SetLogicFlags(A);
+        TotalCycles += 14UL; // (18 total)
+    }
+
+    private void RLD()
+    {
+        byte mem = _bus.Read(HL);
+        byte lowA = (byte)(A & 0x0F);
+        A = (byte)((A & 0xF0) | (mem >> 4));
+        mem = (byte)((mem << 4) | lowA);
+        _bus.Write(HL, mem);
+        FlagH = false;
+        FlagN = false;
+        SetLogicFlags(A);
+        TotalCycles += 14UL; // (18 total)
     }
 }

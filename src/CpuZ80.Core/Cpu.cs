@@ -7,7 +7,9 @@ namespace CpuZ80.Core;
 public sealed partial class Cpu
 {
     private readonly IBus _bus;
+    private readonly IPortBus? _ports;
     private readonly Action[] _ops = new Action[256];
+    private bool _iff1, _iff2;
 
     // ── Registers ────────────────────────────────────────────────────────────
     public byte A { get; internal set; }
@@ -45,9 +47,10 @@ public sealed partial class Cpu
 
     public ulong TotalCycles { get; private set; }
 
-    public Cpu(IBus bus)
+    public Cpu(IBus bus, IPortBus? ports = null)
     {
         _bus = bus;
+        _ports = ports;
         BuildDispatchTable();
         BuildCbDispatchTable();
         BuildEdDispatchTable();
@@ -67,6 +70,24 @@ public sealed partial class Cpu
         _ops[0xED] = HandleED;
         _ops[0xFD] = HandleFD;
         _ops[0xD9] = EXX;
+        _ops[0xEB] = () => { (DE, HL) = (HL, DE); TotalCycles += 4UL; };
+        _ops[0xE3] = () => { ushort tmp = HL; HL = ReadWord(SP); WriteWord(SP, tmp); TotalCycles += 19UL; };
+
+        // Interrupts
+        _ops[0xF3] = () => { _iff1 = _iff2 = false; TotalCycles += 4UL; };
+        _ops[0xFB] = () => { _iff1 = _iff2 = true;  TotalCycles += 4UL; };
+
+        // Misc A
+        _ops[0x27] = DAA;
+        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; TotalCycles += 4UL; };
+        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; TotalCycles += 4UL; };
+        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; TotalCycles += 4UL; };
+
+        // 8-bit Rotates (Base table)
+        _ops[0x07] = RLCA;
+        _ops[0x0F] = RRCA;
+        _ops[0x17] = RLA;
+        _ops[0x1F] = RRA;
 
         // LD dd, nn
         _ops[0x01] = () => { BC = FetchWord(); TotalCycles += 10UL; };
@@ -83,6 +104,27 @@ public sealed partial class Cpu
         _ops[0x19] = () => DoAdd16(DE);
         _ops[0x29] = () => DoAdd16(HL);
         _ops[0x39] = () => DoAdd16(SP);
+        _ops[0xF9] = () => { SP = HL; TotalCycles += 6UL; };
+
+        // INC/DEC 16-bit
+        _ops[0x03] = () => { BC++; TotalCycles += 6UL; };
+        _ops[0x13] = () => { DE++; TotalCycles += 6UL; };
+        _ops[0x23] = () => { HL++; TotalCycles += 6UL; };
+        _ops[0x33] = () => { SP++; TotalCycles += 6UL; };
+        _ops[0x0B] = () => { BC--; TotalCycles += 6UL; };
+        _ops[0x1B] = () => { DE--; TotalCycles += 6UL; };
+        _ops[0x2B] = () => { HL--; TotalCycles += 6UL; };
+        _ops[0x3B] = () => { SP--; TotalCycles += 6UL; };
+
+        // LD A, (nn) / LD (nn), A
+        _ops[0x3A] = () => { A = _bus.Read(FetchWord()); TotalCycles += 13UL; };
+        _ops[0x32] = () => { _bus.Write(FetchWord(), A); TotalCycles += 13UL; };
+
+        // LD A, (BC/DE)
+        _ops[0x0A] = () => { A = _bus.Read(BC); TotalCycles += 7UL; };
+        _ops[0x1A] = () => { A = _bus.Read(DE); TotalCycles += 7UL; };
+        _ops[0x02] = () => { _bus.Write(BC, A); TotalCycles += 7UL; };
+        _ops[0x12] = () => { _bus.Write(DE, A); TotalCycles += 7UL; };
         
         // LD r, n
         _ops[0x06] = () => { B = Fetch(); TotalCycles += 7UL; };
@@ -188,6 +230,10 @@ public sealed partial class Cpu
         _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 3UL; }; // OR n
         _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 3UL; }; // CP n
 
+        // I/O
+        _ops[0xD3] = () => { _ports?.Out((ushort)((A << 8) | Fetch()), A); TotalCycles += 11UL; };
+        _ops[0xDB] = () => { A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; TotalCycles += 11UL; };
+
         // Stack instructions
         _ops[0xC5] = PUSH_BC;
         _ops[0xD5] = PUSH_DE;
@@ -245,7 +291,11 @@ public sealed partial class Cpu
         _ops[opcode]();
     }
 
-    private byte Fetch() => _bus.Read(PC++);
+    private byte Fetch()
+    {
+        R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); // Bit 7 is preserved, bits 0-6 increment
+        return _bus.Read(PC++);
+    }
 
     private ushort FetchWord()
     {
