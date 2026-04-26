@@ -125,4 +125,69 @@ public class ExtendedTests : CpuFixture
         Assert.Equal(0xBB, Ram.Read(0x2001));
         Assert.Equal(0, Cpu.BC);
     }
+
+    [Fact]
+    public void CPD_SearchesMemoryBackwards()
+    {
+        Cpu.A = 0x55;
+        Cpu.HL = 0x1000;
+        Cpu.BC = 0x0001;
+        Ram.Write(0x1000, 0x55);
+        Load(0x0000, 0xED, 0xA9); // CPD
+        Step();
+        Assert.Equal(0x0FFF, Cpu.HL);
+        Assert.Equal(0, Cpu.BC);
+        Assert.True(Cpu.FlagZ);
+    }
+
+    [Fact]
+    public void CPDR_SearchesMemoryBackwardsUntilFound()
+    {
+        Cpu.A = 0x55;
+        Cpu.HL = 0x1002;
+        Cpu.BC = 0x0003;
+        Ram.Write(0x1002, 0x11);
+        Ram.Write(0x1001, 0x55);
+        Ram.Write(0x1000, 0x33);
+        Load(0x0000, 0xED, 0xB9); // CPDR
+        while(Cpu.BC > 0 && !Cpu.FlagZ) Step();
+        Assert.Equal(0x1000, Cpu.HL);
+        Assert.True(Cpu.FlagZ);
+    }
+
+    [Fact]
+    public void CPIR_TerminationOnBCZero()
+    {
+        Cpu.A = 0xFF; // Not in memory
+        Cpu.HL = 0x1000;
+        Cpu.BC = 0x0002;
+        Ram.Write(0x1000, 0x11);
+        Ram.Write(0x1001, 0x22);
+        Load(0x0000, 0xED, 0xB1); // CPIR
+        while(Cpu.BC > 0 && !Cpu.FlagZ) Step();
+        Assert.Equal(0, Cpu.BC);
+        Assert.False(Cpu.FlagZ);
+    }
+
+    [Fact]
+    public void ADC_HL_BC_NoCarry()
+    {
+        Cpu.HL = 0x1000;
+        Cpu.BC = 0x0100;
+        Cpu.FlagC = false;
+        Load(0x0000, 0xED, 0x4A); // ADC HL, BC
+        Step();
+        Assert.Equal(0x1100, Cpu.HL);
+    }
+
+    [Fact]
+    public void SBC_HL_DE_NoCarry()
+    {
+        Cpu.HL = 0x1000;
+        Cpu.DE = 0x0100;
+        Cpu.FlagC = false;
+        Load(0x0000, 0xED, 0x52); // SBC HL, DE
+        Step();
+        Assert.Equal(0x0F00, Cpu.HL);
+    }
 }

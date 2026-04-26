@@ -85,6 +85,65 @@ public class BitwiseTests : CpuFixture
         Assert.Equal(0x00, Ram.Read(0x8000));
         Assert.True(Cpu.FlagC);
         Assert.True(Cpu.FlagZ);
-        Assert.Equal(15UL, Cpu.TotalCycles); // CB instructions on (HL) take 15 cycles
+        Assert.Equal(15UL, Cpu.TotalCycles); 
+    }
+
+    [Fact]
+    public void RRC_B_RotatesRightCircular()
+    {
+        Cpu.B = 0x01;
+        Load(0x0000, 0xCB, 0x08); // RRC B
+        Step();
+        Assert.Equal(0x80, Cpu.B);
+        Assert.True(Cpu.FlagC);
+    }
+
+    [Fact]
+    public void RR_C_RotatesRightThroughCarry()
+    {
+        Cpu.C = 0x01;
+        Cpu.FlagC = false;
+        Load(0x0000, 0xCB, 0x19); // RR C
+        Step();
+        Assert.Equal(0x00, Cpu.C);
+        Assert.True(Cpu.FlagC);
+        
+        Load(0x1000, 0xCB, 0x19); // RR C with Carry set
+        Cpu.FlagC = true;
+        Cpu.PC = 0x1000;
+        Step();
+        Assert.Equal(0x80, Cpu.C);
+        Assert.False(Cpu.FlagC);
+    }
+
+    [Fact]
+    public void SLA_B_ShiftsLeftArithmetic()
+    {
+        Cpu.B = 0x80;
+        Load(0x0000, 0xCB, 0x20); // SLA B
+        Step();
+        Assert.Equal(0x00, Cpu.B);
+        Assert.True(Cpu.FlagC);
+        Assert.True(Cpu.FlagZ);
+    }
+
+    [Fact]
+    public void SRA_B_ShiftsRightArithmetic()
+    {
+        Cpu.B = 0x81;
+        Load(0x0000, 0xCB, 0x28); // SRA B
+        Step();
+        Assert.Equal(0xC0, Cpu.B); // Sign bit preserved
+        Assert.True(Cpu.FlagC);
+    }
+
+    [Fact]
+    public void SLL_B_ShiftsLeftLogicalUndocumented()
+    {
+        Cpu.B = 0x80;
+        Load(0x0000, 0xCB, 0x30); // SLL B
+        Step();
+        Assert.Equal(0x01, Cpu.B); // Bit 0 becomes 1
+        Assert.True(Cpu.FlagC);
     }
 }

@@ -115,15 +115,14 @@ public sealed partial class Cpu
         int type = (opcode >> 3) & 0x07;
         switch (type)
         {
-            case 0: AddInternal(val, false); break; // ADD
-            case 1: AddInternal(val, true);  break; // ADC
-            case 2: SubInternal(val, false); break; // SUB
-            case 3: SubInternal(val, true);  break; // SBC
+            case 0: AddInternal(val, false); TotalCycles -= 4UL; break; // ADD
+            case 1: AddInternal(val, true);  TotalCycles -= 4UL; break; // ADC
+            case 2: SubInternal(val, false); TotalCycles -= 4UL; break; // SUB
+            case 3: SubInternal(val, true);  TotalCycles -= 4UL; break; // SBC
             case 4: A &= val; SetLogicFlags(A); break; // AND
             case 5: A ^= val; SetLogicFlags(A); break; // XOR
             case 6: A |= val; SetLogicFlags(A); break; // OR
-            case 7: byte oldA = A; SubInternal(val, false); A = oldA; break; // CP
+            case 7: byte oldA = A; SubInternal(val, false); TotalCycles -= 4UL; A = oldA; break; // CP
         }
-        TotalCycles -= 4UL; // Deduct the cycles added by the helpers so HandleIndexed can set specific timing
     }
 }
