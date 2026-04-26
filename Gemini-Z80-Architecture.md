@@ -48,3 +48,6 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 
 ## 4. Final Validation
 The emulator core is functionally complete for all documented Z80 instructions, including prefixes. Verification has been performed via TDD with >90% code coverage.
+
+### 4.1 Integration Testing
+An integration test runner has been implemented in `CpuZ80.Tests/IntegrationTests.cs`. It is designed to host the **ZEXALL** functional test suite by providing a minimal CP/M BDOS emulation. Passing ZEXALL is the definitive proof of Z80 architectural correctness.
