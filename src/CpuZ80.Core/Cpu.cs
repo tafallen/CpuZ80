@@ -42,8 +42,6 @@ public sealed partial class Cpu
 
     public ushort PC { get; internal set; }
     public ushort SP { get; internal set; }
-    public ushort IX { get; internal set; }
-    public ushort IY { get; internal set; }
 
     public ulong TotalCycles { get; private set; }
 
@@ -65,7 +63,9 @@ public sealed partial class Cpu
         _ops[0x00] = NOP;
         _ops[0x08] = EX_AF_AF;
         _ops[0xCB] = HandleCB;
+        _ops[0xDD] = HandleDD;
         _ops[0xED] = HandleED;
+        _ops[0xFD] = HandleFD;
         _ops[0xD9] = EXX;
 
         // LD dd, nn
