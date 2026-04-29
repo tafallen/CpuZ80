@@ -76,14 +76,16 @@ public sealed partial class Cpu
 
     private void DoAdd16(ushort val)
     {
-        int res = HL + val;
-        
+        ushort cur = GetReg16(2);
+        int res = cur + val;
+
         FlagN = false;
-        FlagH = ((HL ^ val ^ res) & 0x1000) != 0;
+        FlagH = ((cur ^ val ^ res) & 0x1000) != 0;
         FlagC = (res & 0x10000) != 0;
-        
-        HL = (ushort)(res & 0xFFFF);
-        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28)); 
+
+        ushort result = (ushort)(res & 0xFFFF);
+        SetReg16(2, result);
+        F = (byte)((F & ~0x28) | ((result >> 8) & 0x28));
         TotalCycles += 11UL;
     }
 
@@ -120,13 +122,9 @@ public sealed partial class Cpu
     private void DoCp(byte val)
     {
         byte oldA = A;
-        SubInternal(val, false); 
+        SubInternal(val, false);
         A = oldA;
-        // Correct X/Y flags for CP: they come from the OPERAND, not the result
-        // Wait, no. They come from the OPERAND for BIT, but for CP they come from the result?
-        // Actually for CP they come from the operand val? No, result.
-        // Let's re-verify: CP result bits 3,5. Yes.
-        F = (byte)((F & ~0x28) | (val & 0x28)); // Actually, many sources say Operand for CP!
+        F = (byte)((F & ~0x28) | (val & 0x28)); // X/Y flags come from operand, not result
     }
 
     private void SetLogicFlags(byte res)
