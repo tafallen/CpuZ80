@@ -10,21 +10,17 @@ The CPU core is the first milestone. Hardware emulation follows.
 ## Z80 CPU — Remaining Work
 
 ### Interrupt Handling
-- `INT` (maskable interrupt): modes 0, 1, and 2 — none are implemented
-- `NMI` (non-maskable interrupt): jumps to 0x0066, pushes PC — not implemented
-- IFF1/IFF2 are tracked but never acted on
-- Most ROMs rely heavily on interrupts (keyboard, timers, display sync)
+- ~~`INT` (maskable interrupt): modes 0, 1, and 2 — none are implemented~~ ✓
+- ~~`NMI` (non-maskable interrupt): jumps to 0x0066, pushes PC — not implemented~~ ✓
+- ~~IFF1/IFF2 are tracked but never acted on~~ ✓
 
 ### Undocumented Opcodes
-- `SLL` (CB 30–37) is implemented but classed as undocumented
-- Several DD/FD prefix opcodes that fall through to the base table behave
-  differently on real hardware (e.g. DD 00 is a NOP-like, not a true NOP)
-- `IN F, (C)` (ED 70) — reads port, affects flags, discards result (currently
-  stores to the `F` register index which is wrong)
+- ~~`SLL` (CB 30–37) is implemented but classed as undocumented~~ ✓ (correctly implemented)
+- ~~Several DD/FD prefix opcodes that fall through to the base table~~ ✓ (resolved via `_indexMode` mechanism)
+- ~~`IN F, (C)` (ED 70) — stores to wrong register~~ ✓ (value discarded correctly, flags set correctly)
 
 ### Accuracy Gaps
-- `R` register increments on every M1 cycle; currently only incremented on
-  `Fetch()` — prefixed instructions increment it twice but only count once
+- ~~`R` register double-increment for prefixed instructions~~ ✓ (`Fetch()` is called once per byte fetched, which is correct Z80 behaviour)
 - Undocumented flags (bits 3 and 5 of F) are set for most instructions but
   not verified against the full ZEXALL undocumented suite
 
