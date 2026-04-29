@@ -10,6 +10,13 @@ public sealed partial class Cpu
     private readonly IPortBus? _ports;
     private readonly Action[] _ops = new Action[256];
     private bool _iff1, _iff2;
+    private bool _halted;
+
+    private enum IndexMode { HL, IX, IY }
+    private IndexMode _indexMode = IndexMode.HL;
+    private ushort _ix, _iy;
+    private ushort _idxAddr;
+    private bool _hasIdxAddr;
 
     // ── Registers ────────────────────────────────────────────────────────────
     public byte A { get; internal set; }
@@ -90,31 +97,31 @@ public sealed partial class Cpu
         _ops[0x1F] = RRA;
 
         // LD dd, nn
-        _ops[0x01] = () => { BC = FetchWord(); TotalCycles += 10UL; };
-        _ops[0x11] = () => { DE = FetchWord(); TotalCycles += 10UL; };
-        _ops[0x21] = () => { HL = FetchWord(); TotalCycles += 10UL; };
-        _ops[0x31] = () => { SP = FetchWord(); TotalCycles += 10UL; };
+        _ops[0x01] = () => { SetReg16(0, FetchWord()); TotalCycles += 10UL; };
+        _ops[0x11] = () => { SetReg16(1, FetchWord()); TotalCycles += 10UL; };
+        _ops[0x21] = () => { SetReg16(2, FetchWord()); TotalCycles += 10UL; };
+        _ops[0x31] = () => { SetReg16(3, FetchWord()); TotalCycles += 10UL; };
 
         // LD (nn), HL and LD HL, (nn)
-        _ops[0x22] = () => { WriteWord(FetchWord(), HL); TotalCycles += 16UL; };
-        _ops[0x2A] = () => { HL = ReadWord(FetchWord()); TotalCycles += 16UL; };
+        _ops[0x22] = () => { WriteWord(FetchWord(), GetReg16(2)); TotalCycles += 16UL; };
+        _ops[0x2A] = () => { SetReg16(2, ReadWord(FetchWord())); TotalCycles += 16UL; };
 
         // ADD HL, ss
-        _ops[0x09] = () => DoAdd16(BC);
-        _ops[0x19] = () => DoAdd16(DE);
-        _ops[0x29] = () => DoAdd16(HL);
-        _ops[0x39] = () => DoAdd16(SP);
-        _ops[0xF9] = () => { SP = HL; TotalCycles += 6UL; };
+        _ops[0x09] = () => DoAdd16(GetReg16(0));
+        _ops[0x19] = () => DoAdd16(GetReg16(1));
+        _ops[0x29] = () => DoAdd16(GetReg16(2));
+        _ops[0x39] = () => DoAdd16(GetReg16(3));
+        _ops[0xF9] = () => { SP = GetReg16(2); TotalCycles += 6UL; };
 
         // INC/DEC 16-bit
-        _ops[0x03] = () => { BC++; TotalCycles += 6UL; };
-        _ops[0x13] = () => { DE++; TotalCycles += 6UL; };
-        _ops[0x23] = () => { HL++; TotalCycles += 6UL; };
-        _ops[0x33] = () => { SP++; TotalCycles += 6UL; };
-        _ops[0x0B] = () => { BC--; TotalCycles += 6UL; };
-        _ops[0x1B] = () => { DE--; TotalCycles += 6UL; };
-        _ops[0x2B] = () => { HL--; TotalCycles += 6UL; };
-        _ops[0x3B] = () => { SP--; TotalCycles += 6UL; };
+        _ops[0x03] = () => { SetReg16(0, (ushort)(GetReg16(0) + 1)); TotalCycles += 6UL; };
+        _ops[0x13] = () => { SetReg16(1, (ushort)(GetReg16(1) + 1)); TotalCycles += 6UL; };
+        _ops[0x23] = () => { SetReg16(2, (ushort)(GetReg16(2) + 1)); TotalCycles += 6UL; };
+        _ops[0x33] = () => { SetReg16(3, (ushort)(GetReg16(3) + 1)); TotalCycles += 6UL; };
+        _ops[0x0B] = () => { SetReg16(0, (ushort)(GetReg16(0) - 1)); TotalCycles += 6UL; };
+        _ops[0x1B] = () => { SetReg16(1, (ushort)(GetReg16(1) - 1)); TotalCycles += 6UL; };
+        _ops[0x2B] = () => { SetReg16(2, (ushort)(GetReg16(2) - 1)); TotalCycles += 6UL; };
+        _ops[0x3B] = () => { SetReg16(3, (ushort)(GetReg16(3) - 1)); TotalCycles += 6UL; };
 
         // LD A, (nn) / LD (nn), A
         _ops[0x3A] = () => { A = _bus.Read(FetchWord()); TotalCycles += 13UL; };
@@ -127,14 +134,14 @@ public sealed partial class Cpu
         _ops[0x12] = () => { _bus.Write(DE, A); TotalCycles += 7UL; };
         
         // LD r, n
-        _ops[0x06] = () => { B = Fetch(); TotalCycles += 7UL; };
-        _ops[0x0E] = () => { C = Fetch(); TotalCycles += 7UL; };
-        _ops[0x16] = () => { D = Fetch(); TotalCycles += 7UL; };
-        _ops[0x1E] = () => { E = Fetch(); TotalCycles += 7UL; };
-        _ops[0x26] = () => { H = Fetch(); TotalCycles += 7UL; };
-        _ops[0x2E] = () => { L = Fetch(); TotalCycles += 7UL; };
-        _ops[0x36] = () => { _bus.Write(HL, Fetch()); TotalCycles += 10UL; };
-        _ops[0x3E] = () => { A = Fetch(); TotalCycles += 7UL; };
+        _ops[0x06] = () => { SetReg(0, Fetch()); TotalCycles += 7UL; };
+        _ops[0x0E] = () => { SetReg(1, Fetch()); TotalCycles += 7UL; };
+        _ops[0x16] = () => { SetReg(2, Fetch()); TotalCycles += 7UL; };
+        _ops[0x1E] = () => { SetReg(3, Fetch()); TotalCycles += 7UL; };
+        _ops[0x26] = () => { SetReg(4, Fetch()); TotalCycles += 7UL; };
+        _ops[0x2E] = () => { SetReg(5, Fetch()); TotalCycles += 7UL; };
+        _ops[0x36] = () => { SetReg(6, Fetch()); TotalCycles += 10UL; };
+        _ops[0x3E] = () => { SetReg(7, Fetch()); TotalCycles += 7UL; };
 
         // INC r
         for (int r = 0; r < 8; r++)
@@ -250,6 +257,16 @@ public sealed partial class Cpu
         _ops[0x18] = JR_e;
         _ops[0xCD] = CALL_nn;
         _ops[0xC9] = RET;
+        _ops[0xE9] = () => { PC = GetReg16(2); TotalCycles += 4UL; };
+        _ops[0x76] = () => { _halted = true; PC--; TotalCycles += 4UL; };
+        _ops[0x10] = DJNZ;
+
+        // RST
+        for (int t = 0; t < 8; t++)
+        {
+            int vec = t;
+            _ops[0xC7 | (vec << 3)] = () => { Push(PC); PC = (ushort)(vec << 3); TotalCycles += 11UL; };
+        }
 
         for (int cc = 0; cc < 8; cc++)
         {
@@ -287,6 +304,7 @@ public sealed partial class Cpu
 
     public void Step()
     {
+        if (_halted) { TotalCycles += 4UL; return; }
         byte opcode = Fetch();
         _ops[opcode]();
     }
@@ -317,14 +335,94 @@ public sealed partial class Cpu
         _bus.Write((ushort)(addr + 1), (byte)(val >> 8));
     }
 
-    private byte GetReg(int index) => index switch
+    private byte GetReg(int index)
     {
-        0 => B, 1 => C, 2 => D, 3 => E, 4 => H, 5 => L, 6 => _bus.Read(HL), 7 => A,
-        _ => throw new ArgumentOutOfRangeException(nameof(index))
-    };
+        if (_indexMode != IndexMode.HL)
+        {
+            ushort reg = _indexMode == IndexMode.IX ? _ix : _iy;
+            if (index == 4) return (byte)(reg >> 8);
+            if (index == 5) return (byte)(reg & 0xFF);
+            if (index == 6)
+            {
+                sbyte d = (sbyte)Fetch();
+                _idxAddr = (ushort)(reg + d);
+                _hasIdxAddr = true;
+                TotalCycles += 8UL;
+                return _bus.Read(_idxAddr);
+            }
+        }
+
+        return index switch
+        {
+            0 => B, 1 => C, 2 => D, 3 => E, 4 => H, 5 => L, 6 => _bus.Read(HL), 7 => A,
+            _ => throw new ArgumentOutOfRangeException(nameof(index))
+        };
+    }
+
+    private ushort GetReg16(int index) // 0=BC, 1=DE, 2=HL/IX/IY, 3=SP
+    {
+        return index switch
+        {
+            0 => BC,
+            1 => DE,
+            2 => _indexMode == IndexMode.IX ? _ix : (_indexMode == IndexMode.IY ? _iy : HL),
+            3 => SP,
+            _ => throw new ArgumentOutOfRangeException(nameof(index))
+        };
+    }
+
+    private void SetReg16(int index, ushort val)
+    {
+        switch (index)
+        {
+            case 0: BC = val; break;
+            case 1: DE = val; break;
+            case 2:
+                if (_indexMode == IndexMode.IX) _ix = val;
+                else if (_indexMode == IndexMode.IY) _iy = val;
+                else HL = val;
+                break;
+            case 3: SP = val; break;
+            default: throw new ArgumentOutOfRangeException(nameof(index));
+        }
+    }
 
     private void SetReg(int index, byte val)
     {
+        if (_indexMode != IndexMode.HL)
+        {
+            if (index == 4)
+            {
+                if (_indexMode == IndexMode.IX) _ix = (ushort)((_ix & 0x00FF) | (val << 8));
+                else                            _iy = (ushort)((_iy & 0x00FF) | (val << 8));
+                return;
+            }
+            if (index == 5)
+            {
+                if (_indexMode == IndexMode.IX) _ix = (ushort)((_ix & 0xFF00) | val);
+                else                            _iy = (ushort)((_iy & 0xFF00) | val);
+                return;
+            }
+            if (index == 6)
+            {
+                ushort addr;
+                if (_hasIdxAddr)
+                {
+                    addr = _idxAddr;
+                    _hasIdxAddr = false;
+                }
+                else
+                {
+                    ushort reg = _indexMode == IndexMode.IX ? _ix : _iy;
+                    sbyte d = (sbyte)Fetch();
+                    addr = (ushort)(reg + d);
+                    TotalCycles += 8UL;
+                }
+                _bus.Write(addr, val);
+                return;
+            }
+        }
+
         switch (index)
         {
             case 0: B = val; break;

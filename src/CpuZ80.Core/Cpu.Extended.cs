@@ -60,6 +60,36 @@ public sealed partial class Cpu
         _edOps[0x74] = NEG;
         _edOps[0x7C] = NEG;
 
+        // IN r, (C) / OUT (C), r
+        for (int r = 0; r < 8; r++)
+        {
+            int reg = r;
+            _edOps[0x40 | (reg << 3)] = () =>
+            {
+                byte val = _ports?.In(BC) ?? 0xFF;
+                if (reg != 6) SetReg(reg, val);
+                FlagS = (val & 0x80) != 0;
+                FlagZ = val == 0;
+                FlagH = false;
+                FlagPV = GetParity(val);
+                FlagN = false;
+                F = (byte)((F & ~0x28) | (val & 0x28));
+                TotalCycles += 12UL;
+            };
+            _edOps[0x41 | (reg << 3)] = () =>
+            {
+                byte val = reg == 6 ? (byte)0 : GetReg(reg);
+                _ports?.Out(BC, val);
+                TotalCycles += 12UL;
+            };
+        }
+
+        // Block I/O
+        _edOps[0xB2] = INIR;
+        _edOps[0xBA] = INDR;
+        _edOps[0xB3] = OTIR;
+        _edOps[0xBB] = OTDR;
+
         // Block Operations
         _edOps[0xA0] = LDI;
         _edOps[0xA1] = CPI;
@@ -223,6 +253,70 @@ public sealed partial class Cpu
         FlagN = false;
         SetLogicFlags(A);
         TotalCycles += 14UL; // (18 total)
+    }
+
+    private void INI()
+    {
+        byte val = _ports?.In(BC) ?? 0xFF;
+        _bus.Write(HL++, val);
+        B--;
+        FlagN = true;
+        FlagZ = B == 0;
+        TotalCycles += 16UL;
+    }
+
+    private void INIR()
+    {
+        INI();
+        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+    }
+
+    private void IND()
+    {
+        byte val = _ports?.In(BC) ?? 0xFF;
+        _bus.Write(HL--, val);
+        B--;
+        FlagN = true;
+        FlagZ = B == 0;
+        TotalCycles += 16UL;
+    }
+
+    private void INDR()
+    {
+        IND();
+        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+    }
+
+    private void OUTI()
+    {
+        byte val = _bus.Read(HL++);
+        _ports?.Out(BC, val);
+        B--;
+        FlagN = true;
+        FlagZ = B == 0;
+        TotalCycles += 16UL;
+    }
+
+    private void OTIR()
+    {
+        OUTI();
+        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+    }
+
+    private void OUTD()
+    {
+        byte val = _bus.Read(HL--);
+        _ports?.Out(BC, val);
+        B--;
+        FlagN = true;
+        FlagZ = B == 0;
+        TotalCycles += 16UL;
+    }
+
+    private void OTDR()
+    {
+        OUTD();
+        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
     }
 
     private void RLD()

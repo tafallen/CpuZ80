@@ -16,6 +16,11 @@ public sealed partial class Cpu
             _bus.Write((ushort)(_ix + d), n);
             TotalCycles += 15UL; // 19 total (prefix adds 4 below)
         }
+        else if (opcode == 0xE9) // JP (IX)
+        {
+            PC = _ix;
+            TotalCycles += 4UL;
+        }
         else
             _ops[opcode]();
         _indexMode = IndexMode.HL;
@@ -36,6 +41,11 @@ public sealed partial class Cpu
             byte n = Fetch();
             _bus.Write((ushort)(_iy + d), n);
             TotalCycles += 15UL;
+        }
+        else if (opcode == 0xE9) // JP (IY)
+        {
+            PC = _iy;
+            TotalCycles += 4UL;
         }
         else
             _ops[opcode]();

@@ -70,6 +70,20 @@ public sealed partial class Cpu
 
     private void RET() { PC = Pop(); TotalCycles += 10UL; }
 
+    private void DJNZ()
+    {
+        sbyte offset = (sbyte)Fetch();
+        if (--B != 0)
+        {
+            PC = (ushort)(PC + offset);
+            TotalCycles += 13UL;
+        }
+        else
+        {
+            TotalCycles += 8UL;
+        }
+    }
+
     private void RET_cc(int cc)
     {
         if (CheckCondition(cc))
