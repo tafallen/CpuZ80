@@ -21,8 +21,8 @@ The CPU core is the first milestone. Hardware emulation follows.
 
 ### Accuracy Gaps
 - ~~`R` register double-increment for prefixed instructions~~ ✓ (`Fetch()` is called once per byte fetched, which is correct Z80 behaviour)
-- Undocumented flags (bits 3 and 5 of F) are set for most instructions but
-  not verified against the full ZEXALL undocumented suite
+- ~~Undocumented flags (bits 3 and 5 of F) are set for most instructions but
+  not verified against the full ZEXALL undocumented suite~~ ✓
 
 ---
 
