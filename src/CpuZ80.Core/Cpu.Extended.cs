@@ -48,18 +48,36 @@ public sealed partial class Cpu
         _edOps[0x46] = () => { _interruptMode = 0; TotalCycles += 8UL; };
         _edOps[0x56] = () => { _interruptMode = 1; TotalCycles += 8UL; };
         _edOps[0x5E] = () => { _interruptMode = 2; TotalCycles += 8UL; };
+        // IM aliases
+        _edOps[0x4E] = () => { _interruptMode = 0; TotalCycles += 8UL; };
+        _edOps[0x66] = () => { _interruptMode = 0; TotalCycles += 8UL; };
+        _edOps[0x6E] = () => { _interruptMode = 0; TotalCycles += 8UL; };
+        _edOps[0x76] = () => { _interruptMode = 1; TotalCycles += 8UL; };
+        _edOps[0x7E] = () => { _interruptMode = 2; TotalCycles += 8UL; };
 
         // Misc
         _edOps[0x44] = NEG;
         _edOps[0x45] = RETN;
         _edOps[0x4D] = RETI;
-        _edOps[0x4C] = NEG; // Documented as alias
+        // NEG aliases
+        _edOps[0x4C] = NEG;
         _edOps[0x54] = NEG;
         _edOps[0x5C] = NEG;
         _edOps[0x64] = NEG;
         _edOps[0x6C] = NEG;
         _edOps[0x74] = NEG;
         _edOps[0x7C] = NEG;
+        // RETN aliases
+        _edOps[0x55] = RETN;
+        _edOps[0x5D] = RETN;
+        _edOps[0x65] = RETN;
+        _edOps[0x6D] = RETN;
+        _edOps[0x75] = RETN;
+        _edOps[0x7D] = RETN;
+
+        // Undocumented LD (nn), HL / LD HL, (nn) duplicates
+        _edOps[0x63] = () => { WriteWord(FetchWord(), HL); TotalCycles += 20UL; };
+        _edOps[0x6B] = () => { HL = ReadWord(FetchWord()); TotalCycles += 20UL; };
 
         // IN r, (C) / OUT (C), r
         for (int r = 0; r < 8; r++)
