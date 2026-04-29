@@ -3,7 +3,8 @@ namespace CpuZ80.Core;
 public sealed partial class Cpu
 {
     private readonly Action[] _edOps = new Action[256];
-    private byte I, R;
+    public byte I;
+    private byte R;
     private int _interruptMode = 0;
 
     private void BuildEdDispatchTable()
@@ -40,8 +41,8 @@ public sealed partial class Cpu
         // LD I, A / LD R, A and vice-versa
         _edOps[0x47] = () => { I = A; TotalCycles += 9UL; };
         _edOps[0x4F] = () => { R = A; TotalCycles += 9UL; };
-        _edOps[0x57] = () => { A = I; SetLogicFlags(A); FlagPV = _iff2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
-        _edOps[0x5F] = () => { A = R; SetLogicFlags(A); FlagPV = _iff2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
+        _edOps[0x57] = () => { A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
+        _edOps[0x5F] = () => { A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
 
         // IM x
         _edOps[0x46] = () => { _interruptMode = 0; TotalCycles += 8UL; };
@@ -243,8 +244,8 @@ public sealed partial class Cpu
         TotalCycles += 4UL; // (8 total including prefix fetch)
     }
 
-    private void RETI() { RET(); TotalCycles += 4UL; }
-    private void RETN() { RET(); TotalCycles += 4UL; }
+    private void RETI() { RET(); IFF1 = IFF2; TotalCycles += 4UL; }
+    private void RETN() { RET(); IFF1 = IFF2; TotalCycles += 4UL; }
 
     private void RRD()
     {

@@ -9,8 +9,15 @@ public sealed partial class Cpu
     private readonly IBus _bus;
     private readonly IPortBus? _ports;
     private readonly Action[] _ops = new Action[256];
-    private bool _iff1, _iff2;
+    public bool IFF1 { get; set; }
+    public bool IFF2 { get; set; }
     private bool _halted;
+    private bool _nmiPending;
+    private bool _intPending;
+    private byte _intDataBus;
+
+    public void TriggerNmi() => _nmiPending = true;
+    public void TriggerInt(byte dataBus = 0xFF) { _intPending = true; _intDataBus = dataBus; }
 
     private enum IndexMode { HL, IX, IY }
     private IndexMode _indexMode = IndexMode.HL;
@@ -81,8 +88,8 @@ public sealed partial class Cpu
         _ops[0xE3] = () => { ushort tmp = GetReg16(2); SetReg16(2, ReadWord(SP)); WriteWord(SP, tmp); TotalCycles += 19UL; };
 
         // Interrupts
-        _ops[0xF3] = () => { _iff1 = _iff2 = false; TotalCycles += 4UL; };
-        _ops[0xFB] = () => { _iff1 = _iff2 = true;  TotalCycles += 4UL; };
+        _ops[0xF3] = () => { IFF1 = IFF2 = false; TotalCycles += 4UL; };
+        _ops[0xFB] = () => { IFF1 = IFF2 = true;  TotalCycles += 4UL; };
 
         // Misc A
         _ops[0x27] = DAA;
@@ -304,6 +311,20 @@ public sealed partial class Cpu
 
     public void Step()
     {
+        if (_nmiPending)
+        {
+            _halted = false;
+            _nmiPending = false;
+            AcceptNmi();
+            return;
+        }
+        if (_intPending && IFF1)
+        {
+            _halted = false;
+            _intPending = false;
+            AcceptInt();
+            return;
+        }
         if (_halted) { TotalCycles += 4UL; return; }
         byte opcode = Fetch();
         _ops[opcode]();
