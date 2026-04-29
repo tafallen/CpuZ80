@@ -99,6 +99,10 @@ public sealed partial class Cpu
         _edOps[0xB1] = CPIR;
         _edOps[0xB8] = LDDR;
         _edOps[0xB9] = CPDR;
+        _edOps[0xA2] = INI;
+        _edOps[0xAA] = IND;
+        _edOps[0xA3] = OUTI;
+        _edOps[0xAB] = OUTD;
     }
 
     private void DoAdc16(ushort val)

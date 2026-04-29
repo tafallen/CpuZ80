@@ -2,7 +2,7 @@ using Xunit;
 
 namespace CpuZ80.Tests;
 
-public class MissingInstructionTests : CpuFixture
+public class ControlFlowExtendedTests : CpuFixture
 {
     // ── HALT ─────────────────────────────────────────────────────────────────
 
@@ -168,6 +168,87 @@ public class MissingInstructionTests : CpuFixture
         Assert.Equal(0x3003, cpu.HL);
         Assert.Equal(0xAA, Ram.Read(0x3002)); // last byte stored (from port 0x0104)
         Assert.True(cpu.FlagZ);
+    }
+
+    // ── PUSH/POP IX/IY ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void PUSH_IX_PushesIXOntoStack()
+    {
+        Cpu.SP = 0x0200;
+        Cpu.IX = 0x1234;
+        Load(0x0000, 0xDD, 0xE5); // PUSH IX
+        Step();
+        Assert.Equal(0x01FE, Cpu.SP);
+        Assert.Equal(0x12, Ram.Read(0x01FF));
+        Assert.Equal(0x34, Ram.Read(0x01FE));
+        Assert.Equal(15UL, Cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void POP_IY_PopsFromStackIntoIY()
+    {
+        Cpu.SP = 0x01FE;
+        Ram.Write(0x01FE, 0x78);
+        Ram.Write(0x01FF, 0x56);
+        Load(0x0000, 0xFD, 0xE1); // POP IY
+        Step();
+        Assert.Equal(0x5678, Cpu.IY);
+        Assert.Equal(0x0200, Cpu.SP);
+        Assert.Equal(14UL, Cpu.TotalCycles);
+    }
+
+    // ── EX (SP), IX/IY ────────────────────────────────────────────────────────
+
+    [Fact]
+    public void EX_SP_IX_ExchangesTopOfStackWithIX()
+    {
+        Cpu.SP = 0x01FE;
+        Cpu.IX = 0x1234;
+        Ram.Write(0x01FE, 0x78);
+        Ram.Write(0x01FF, 0x56);
+        Load(0x0000, 0xDD, 0xE3); // EX (SP), IX
+        Step();
+        Assert.Equal(0x5678, Cpu.IX);
+        Assert.Equal(0x34, Ram.Read(0x01FE));
+        Assert.Equal(0x12, Ram.Read(0x01FF));
+        Assert.Equal(23UL, Cpu.TotalCycles);
+    }
+
+    // ── INI / IND / OUTI / OUTD (single-step block I/O) ──────────────────────
+
+    [Fact]
+    public void INI_InputsOneByte_IncrementsHL_DecrementsB()
+    {
+        var ports = new TestPortBus();
+        ports.Set(0x0204, 0x42);
+        var cpu = new CpuZ80.Core.Cpu(Ram, ports);
+        cpu.HL = 0x3000;
+        cpu.BC = 0x0204; // port 4, count 2
+        Ram.Load(0x0000, new byte[] { 0xED, 0xA2 }); // INI
+        cpu.PC = 0x0000;
+        cpu.Step();
+        Assert.Equal(1, cpu.B);
+        Assert.Equal(0x3001, cpu.HL);
+        Assert.Equal(0x42, Ram.Read(0x3000));
+        Assert.Equal(16UL, cpu.TotalCycles);
+    }
+
+    [Fact]
+    public void OUTI_OutputsOneByte_IncrementsHL_DecrementsB()
+    {
+        var ports = new TestPortBus();
+        var cpu = new CpuZ80.Core.Cpu(Ram, ports);
+        Ram.Write(0x4000, 0x99);
+        cpu.HL = 0x4000;
+        cpu.BC = 0x0205;
+        Ram.Load(0x0000, new byte[] { 0xED, 0xA3 }); // OUTI
+        cpu.PC = 0x0000;
+        cpu.Step();
+        Assert.Equal(1, cpu.B);
+        Assert.Equal(0x4001, cpu.HL);
+        Assert.Equal(0x99, ports.Get(0x0205));
+        Assert.Equal(16UL, cpu.TotalCycles);
     }
 }
 

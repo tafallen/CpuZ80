@@ -78,7 +78,7 @@ public sealed partial class Cpu
         _ops[0xFD] = HandleFD;
         _ops[0xD9] = EXX;
         _ops[0xEB] = () => { (DE, HL) = (HL, DE); TotalCycles += 4UL; };
-        _ops[0xE3] = () => { ushort tmp = HL; HL = ReadWord(SP); WriteWord(SP, tmp); TotalCycles += 19UL; };
+        _ops[0xE3] = () => { ushort tmp = GetReg16(2); SetReg16(2, ReadWord(SP)); WriteWord(SP, tmp); TotalCycles += 19UL; };
 
         // Interrupts
         _ops[0xF3] = () => { _iff1 = _iff2 = false; TotalCycles += 4UL; };
