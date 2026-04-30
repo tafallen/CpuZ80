@@ -106,6 +106,38 @@ instruction by instruction.
 - Acceptance: `Machines.Zx80.Tests` project; test constructs machine with a stub ROM,
   calls `Reset()`, and asserts `Cpu.PC` is read from the reset vector.
 
+**Implementation plan — US-201**
+
+_New files:_
+- `src/Machines.Zx80/Machines.Zx80.csproj` — references `CpuZ80.Core` and `Machines.Common`
+- `src/Machines.Zx80/Zx80Machine.cs` — machine compositor
+- `tests/Machines.Zx80.Tests/Machines.Zx80.Tests.csproj` — references `Machines.Zx80` and xUnit
+- `tests/Machines.Zx80.Tests/Zx80MachineTests.cs` — machine tests
+
+_Memory map wired in constructor:_
+```
+0x0000–0x0FFF  Rom  (4K — BASIC/OS ROM image)
+0x4000–0x43FF  Ram  (1K — system variables + display file + BASIC program)
+0x4400–0xFFFF  unmapped → 0xFF
+```
+
+_`Reset()`:_ sets `Cpu.PC = 0x0000`, clears `Cpu.IFF1`/`IFF2`, sets `Cpu.SP = 0xFFFF`.
+The Z80 has no memory-mapped reset vector — it simply starts execution at address 0.
+
+_`Step()`:_ delegates to `Cpu.Step()`.
+
+_`RunFrame()`:_ steps the CPU for one frame's worth of T-states
+(~3,250,000 Hz ÷ 50 Hz = 65,000 T-states). Halted cycles count toward the frame budget.
+
+_Test cases:_
+1. `Reset_SetsPCToZero` — construct with a minimal 4K ROM stub (all NOPs), call `Reset()`,
+   assert `Cpu.PC == 0x0000`.
+2. `Reset_DisablesInterrupts` — assert `Cpu.IFF1 == false` and `Cpu.IFF2 == false` after reset.
+3. `Step_ExecutesOneInstruction` — load a NOP at 0x0000, call `Step()`, assert `Cpu.PC == 0x0001`.
+4. `RunFrame_AdvancesCyclesByOneFrame` — call `RunFrame()`, assert `Cpu.TotalCycles >= 65000`.
+
+---
+
 **US-202 — ZX80 keyboard matrix**
 As a user, I want the ZX80 keyboard (8 half-rows × 5 keys) decoded from `IPhysicalKeyboard`
 and returned via `IN` reads on the lower address bus — so that key presses are visible to
@@ -114,6 +146,47 @@ the ROM BASIC interpreter.
   select the half-row, result byte has bits 0–4 low for pressed keys (active low).
 - Acceptance: tests drive `IPhysicalKeyboard` stubs and assert the correct `IN` result byte
   for each half-row.
+
+**Implementation plan — US-202**
+
+_ZX80 keyboard matrix — half-row to address line and key mapping:_
+
+| A line low | Port (high byte) | Keys (bits 0–4, active low) |
+|---|---|---|
+| A8  | 0xFE | Shift, Z, X, C, V |
+| A9  | 0xFD | A, S, D, F, G |
+| A10 | 0xFB | Q, W, E, R, T |
+| A11 | 0xF7 | 1, 2, 3, 4, 5 |
+| A12 | 0xEF | 0, 9, 8, 7, 6 |
+| A13 | 0xDF | P, O, I, U, Y |
+| A14 | 0xBF | Enter, L, K, J, H |
+| A15 | 0x7F | Space, SymShift, M, N, B |
+
+The full 16-bit port address is passed to `IPortBus.In(ushort port)`. The high byte
+selects the half-row(s) — a 0 bit in the high byte activates that row. Multiple rows may
+be selected simultaneously (for compound key detection). Result byte bits 4–0 correspond
+to keys right-to-left in the table above; a 0 bit means the key is pressed (active low).
+Bits 5–7 are always 1 (open bus / not used).
+
+_New files:_
+- `src/Machines.Zx80/Zx80KeyboardAdapter.cs` — maps `IPhysicalKeyboard` to half-row bytes
+- `src/Machines.Zx80/Zx80PortBus.cs` — implements `IPortBus`; delegates keyboard reads to
+  `Zx80KeyboardAdapter`, routes tape reads on bit 7 (US-204)
+
+_Changes:_
+- `Zx80Machine` constructor: instantiate `Zx80PortBus` and pass to `Cpu`
+
+_Test cases (in `Zx80MachineTests.cs` or a new `Zx80KeyboardTests.cs`):_
+1. `Keyboard_NoKeysPressed_AllBitsHigh` — construct with no keys held, `IN` any half-row,
+   assert result byte `== 0xFF` (all bits high).
+2. `Keyboard_HalfRow_CorrectBitLow` — for each of the 8 half-rows, press one key via the
+   stub, assert the correct bit (0–4) is low in the result.
+3. `Keyboard_MultipleHalfRowsSelected_CombinesResults` — select two rows simultaneously
+   (both address bits low), assert pressed keys from both rows appear in the result.
+4. `Keyboard_KeyInWrongRow_NotReflected` — press a key, read a different half-row,
+   assert result is 0xFF (key not visible in that row).
+
+---
 
 **US-203 — ZX80 display (software vsync)**
 As a user, I want `RenderFrame()` to accept an `IVideoSink` and produce the ZX80's
@@ -126,11 +199,90 @@ is built by scanning display RAM during `RunFrame()` — so that the screen upda
 - Acceptance: integration test with a minimal ROM that writes a known character to display
   RAM; `RenderFrame()` produces the expected pixel pattern.
 
+**Implementation plan — US-203**
+
+_ZX80 display background:_
+The display file lives in RAM. Each of the 24 character rows is a sequence of 33 bytes:
+a `HALT` (0x76) terminator at the start, then 32 character codes, then another `HALT` at the
+end. The ROM generates video by executing these bytes as instructions — the hardware inverts
+bit 6 of each byte on the data bus so that character codes become NOPs (0x00), allowing
+the CPU to execute them harmlessly. The character font is a table of 8 bytes per character
+embedded in the ROM.
+
+_`RunFrame()` additions:_
+- After each `Cpu.Step()`, check if `Cpu.PC` has re-entered the HALT at the end of a
+  display row (detected by the CPU entering the halted state). Increment a scan-line
+  counter. When the counter reaches 24, the frame is complete.
+- Store the current display file start address (read from the `DFILE` system variable at
+  RAM offset `0x400C`) at the start of each frame for use by `RenderFrame()`.
+
+_`RenderFrame(IVideoSink sink)`:_
+- Allocate a 256×192 `uint[]` pixel buffer (ARGB32).
+- Walk the 24 character rows of the display file in RAM.
+- For each of the 32 character codes per row, look up 8 scan-line bytes from the ROM
+  character table (base address TBD from ROM disassembly; font starts at a fixed ROM
+  offset). Each bit in the font byte maps to one pixel: 1 = ink (black, `0xFF000000`),
+  0 = paper (white, `0xFFFFFFFF`).
+- Call `sink.SubmitFrame(pixels, 256, 192)`.
+
+_NOP mapper (inline, no separate class):_
+The inversion of bit 6 is an artefact of hardware display generation that the CPU never
+actually sees — from the CPU's perspective the display file contains NOPs. The emulator
+therefore does not need to implement the inversion at all; it only matters for
+`RenderFrame()`, which reads the raw character codes from RAM directly before looking
+them up in the font table.
+
+_New files:_
+- No new source files — all logic added to `Zx80Machine.cs`.
+
+_Test cases:_
+1. `RenderFrame_AllSpaces_ProducesWhiteFrame` — fill display file with space characters
+   (0x00), call `RenderFrame()`, assert all pixels are `0xFFFFFFFF`.
+2. `RenderFrame_KnownCharacter_CorrectPixelPattern` — write a character with a known
+   8×8 font pattern into display file row 0 column 0; assert the top-left 8×8 pixel
+   block matches the expected dot pattern.
+3. `RenderFrame_CorrectDimensions` — assert submitted frame is exactly 256×192.
+
+---
+
 **US-204 — ZX80 tape**
 As a user, I want `ITapeDevice` wired to the ROM's load/save routines via the relevant
 memory-mapped I/O so that `.p` / `.o` tape images can be loaded into the emulator.
 - Acceptance: test loads a known tape image and asserts that RAM contains the expected bytes
   after the ROM load routine completes.
+
+**Implementation plan — US-204**
+
+_ZX80 tape I/O:_
+The ZX80 uses a single-bit serial interface:
+- **Save**: ROM pulses the MIC output (port `0xFE` bit 3, `OUT`) to write bits to tape.
+- **Load**: ROM reads the EAR input (port `0xFE` bit 6, `IN`) to read bits from tape.
+
+The `.p` file format is a raw memory dump starting at system variable `VERSN` (0x4009)
+and ending at the top of the BASIC program area. On load, the ROM reads bits from EAR
+and reconstructs bytes, then writes them back to RAM from 0x4009 upward.
+
+_Implementation:_
+- `Zx80PortBus.In(port)`: if bit 6 of the high byte is relevant to EAR, return
+  `ITapeDevice.ReadBit() ? 0xFF : 0xBF` (bit 6 low = pulse detected).
+- `Zx80PortBus.Out(port, value)`: if port matches MIC output, call
+  `ITapeDevice.WriteBit((value & 0x08) != 0)`.
+- Provide a `Zx80TapeAdapter` that implements `ITapeDevice` and streams bits from a
+  `.p` file byte array using the ZX80 pulse encoding (leader tone + data bytes).
+
+_New files:_
+- `src/Machines.Zx80/Zx80TapeAdapter.cs` — `ITapeDevice` implementation for `.p` files
+
+_Changes:_
+- `Zx80PortBus.cs` — add EAR read and MIC write routing
+
+_Test cases:_
+1. `Tape_ReadBit_ReturnsHighWhenNoTape` — with no tape device, `IN 0xFE` bit 6 is high
+   (EAR = 1, no signal).
+2. `Tape_ReadBit_ReturnsLowOnPulse` — stub `ITapeDevice.ReadBit()` returning false;
+   assert bit 6 of `IN 0xFE` is low.
+3. `Tape_WriteBit_ForwardedToDevice` — `OUT 0xFE` with bit 3 set; assert stub
+   `ITapeDevice.WriteBit(true)` was called.
 
 ---
 
