@@ -51,7 +51,7 @@ chips sharing the bus (e.g. a video generator reading display RAM) can access th
 buffer directly, and ROM images can be bulk-loaded without byte-by-byte writes.
 - Acceptance: existing tests still pass; new tests cover `Load()` and `RawBytes` round-trip.~~ ✓
 
-**US-103 — AddressDecoder**
+~~**US-103 — AddressDecoder**
 As a machine builder, I want an `AddressDecoder` class in `CpuZ80.Core` that implements
 `IBus`, accepts `Map(ushort from, ushort to, IBus device)` registrations, routes reads/writes
 to the correct device by address range, returns `0xFF` for unmapped reads, and applies
@@ -59,7 +59,7 @@ last-registration-wins on overlapping ranges — so that I can wire a full memor
 discrete components without custom bus logic in each machine.
 - Acceptance: tests cover single mapping, multiple non-overlapping mappings, overlap
   (last wins), unmapped read returns `0xFF`, unmapped write is silent, device sees
-  zero-based offset (address minus region base).
+  zero-based offset (address minus region base).~~ ✓
 
 **US-104 — Machines.Common project**
 As a machine builder, I want a `Machines.Common` project (namespace `Machines.Common`)
