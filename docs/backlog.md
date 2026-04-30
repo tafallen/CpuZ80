@@ -73,6 +73,29 @@ target both emulators without duplication.
 
 ### Epic 2 — ZX80 Machine
 
+#### Implementation approach: discrete logic
+
+The ZX80 has no programmable chips — its "hardware" is a small number of TTL logic
+gates. Rather than modelling each gate as an `IBus` class (which would be over-engineering
+for single-gate behaviours), all display and sync logic lives directly inside
+`Zx80Machine.RunFrame()` and `RenderFrame()`. This matches the hardware reality and keeps
+the machine class self-contained. The specific gate behaviours to implement inline are:
+
+- **NOP mapper** (single NOT gate on data bus bit 6): during display scan, reads from
+  display RAM have bit 6 inverted so character codes become `0x00` (NOP). Implemented
+  as a conditional transform inside the bus read path during scan cycles.
+- **Sync generation** (NOR gate on `/HALT`): when the CPU halts at end of a display line,
+  `/HSYNC` is asserted. `/VSYNC` is a longer halt at frame end. Implemented as HALT
+  detection in `RunFrame()`.
+- **Character generation**: during display fetch cycles the high byte of the PC drives the
+  character ROM row, producing dot patterns. Implemented in `RenderFrame()` by reading
+  character data from the ROM's `RawBytes` via the display file in RAM.
+- **Keyboard**: the matrix is read via `IN` on the lower address bus — no chip, just
+  pull-downs. Implemented in `IPortBus.In()` inside the machine.
+
+Display RAM (`Ram.RawBytes`) is shared between the CPU bus and `RenderFrame()`, exactly
+as the Acorn Atom's VideoRam is shared with the Mc6847 in the Cpu6502 sibling.
+
 **US-201 — Machines.Zx80 project skeleton**
 As a developer, I want a `Machines.Zx80` project with a `Zx80Machine` class that wires
 together: `AddressDecoder` bus, 4K `Rom` at `0x0000–0x0FFF`, 1K `Ram` at `0x4000–0x43FF`,
@@ -87,6 +110,8 @@ instruction by instruction.
 As a user, I want the ZX80 keyboard (8 half-rows × 5 keys) decoded from `IPhysicalKeyboard`
 and returned via `IN` reads on the lower address bus — so that key presses are visible to
 the ROM BASIC interpreter.
+- Implementation: `IPortBus` inner class inside `Zx80Machine`; address lines A8–A15
+  select the half-row, result byte has bits 0–4 low for pressed keys (active low).
 - Acceptance: tests drive `IPhysicalKeyboard` stubs and assert the correct `IN` result byte
   for each half-row.
 
@@ -94,6 +119,10 @@ the ROM BASIC interpreter.
 As a user, I want `RenderFrame()` to accept an `IVideoSink` and produce the ZX80's
 software-generated 256×192 display — the CPU writes character data to RAM and the display
 is built by scanning display RAM during `RunFrame()` — so that the screen updates at ~50 Hz.
+- Implementation: `RunFrame()` detects HALT (end-of-line sync) and counts scan lines;
+  `RenderFrame()` walks the display file in RAM, reads 8-pixel dot rows from the ROM
+  character table, and submits an ARGB32 frame to `IVideoSink`. NOP-mapper logic
+  (bit 6 inversion) applied inline during display scan. No separate chip class.
 - Acceptance: integration test with a minimal ROM that writes a known character to display
   RAM; `RenderFrame()` produces the expected pixel pattern.
 
