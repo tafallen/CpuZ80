@@ -321,11 +321,25 @@ _ZX80 tape I/O:_
 The ZX80 uses a single-bit serial interface:
 - **Save**: ROM pulses the MIC output (port `0xFE` bit 3, `OUT`) to write bits to tape.
 - **Load**: ROM reads the EAR input (port `0xFE` bit 6, `IN`) to read bits from tape.
+  Bit 6 low = pulse present; bit 6 high = silence. (Note: some sources cite bit 7; the
+  ROM samples bit 6 — verified against ZX80 ROM disassembly.)
 
-ZX80 tape file format is `.o` (also seen as `.80`) — **not `.p`**, which is the ZX81 format.
-The file is a raw memory dump of RAM from `0x4000` to the end of the BASIC program area
-(system variables + display file + BASIC program + variables). On load, the ROM reads bits
-from EAR and reconstructs bytes, writing them back into RAM from `0x4000` upward.
+_ZX80 tape encoding (pulse-count):_
+- **0 bit**: 4 pulses — each pulse is 150 µs HIGH then 150 µs LOW (~300 µs/pulse)
+- **1 bit**: 9 pulses — same 150 µs HIGH + 150 µs LOW per pulse
+- Bits are transmitted **MSB first** within each byte.
+- Average transfer rate: ~307 baud.
+- **No leader tone** — the ROM jumps straight into sampling data pulses. There is no
+  initial sync or header block.
+
+_ZX80 tape file format:_
+`.o` (also seen as `.80`) — **not `.p`**, which is the ZX81 format.
+- Raw memory dump of RAM from `0x4000` upward (system variables + display file +
+  BASIC program + variables).
+- **No file header, no filename** — the file begins at byte 0x4000 content directly.
+- Load length is determined by the E_LINE system variable at RAM offset `0x400A`
+  (2 bytes, little-endian). Length = E_LINE_value − 0x4000. The `Zx80TapeAdapter`
+  reads this from its own byte array after loading system variables to know when to stop.
 
 _Implementation:_
 - `Zx80PortBus.In(port)`: if EAR input is addressed, return
@@ -333,7 +347,9 @@ _Implementation:_
 - `Zx80PortBus.Out(port, value)`: if MIC output is addressed, call
   `ITapeDevice.WriteBit((value & 0x08) != 0)`.
 - Provide a `Zx80TapeAdapter` that implements `ITapeDevice` and streams bits from a
-  `.o` file byte array using the ZX80 pulse encoding (leader tone + data bytes).
+  `.o` file byte array using the pulse-count encoding above (MSB first, 4/9 pulses per bit).
+- `ITapeDevice.Load(Stream data)` accepts the `.o` file; the adapter buffers it and
+  plays back pulses on `ReadBit()` calls.
 
 _New files:_
 - `src/Machines.Zx80/Zx80TapeAdapter.cs` — `ITapeDevice` implementation for `.o` files
@@ -348,6 +364,10 @@ _Test cases:_
    assert bit 6 of `IN 0xFE` is low.
 3. `Tape_WriteBit_ForwardedToDevice` — `OUT 0xFE` with bit 3 set; assert stub
    `ITapeDevice.WriteBit(true)` was called.
+4. `TapeAdapter_DecodesZeroBit` — feed 4 pulses to adapter; assert `ReadBit()` returns false.
+5. `TapeAdapter_DecodeOneBit` — feed 9 pulses to adapter; assert `ReadBit()` returns true.
+6. `TapeAdapter_LoadFile_PopulatesRam` — load a known `.o` file via the ROM load routine
+   (or directly via `ITapeDevice.Load`); assert RAM at 0x4000+ matches expected bytes.
 
 ---
 
