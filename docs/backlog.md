@@ -44,12 +44,12 @@ a `byte[]` on construction, returns bytes on read, and silently ignores writes �
 regions behave correctly when mapped into an `AddressDecoder`.
 - Acceptance: unit tests confirm reads return loaded data; writes are a no-op with no exception.~~ ✓
 
-**US-102 — Ram improvements**
+~~**US-102 — Ram improvements**
 As a machine builder, I want `CpuZ80.Core.Ram` to expose a `RawBytes` property and a
 `Load(ushort baseAddress, byte[] data)` helper — matching the Cpu6502 `Ram` API — so that
 chips sharing the bus (e.g. a video generator reading display RAM) can access the backing
 buffer directly, and ROM images can be bulk-loaded without byte-by-byte writes.
-- Acceptance: existing tests still pass; new tests cover `Load()` and `RawBytes` round-trip.
+- Acceptance: existing tests still pass; new tests cover `Load()` and `RawBytes` round-trip.~~ ✓
 
 **US-103 — AddressDecoder**
 As a machine builder, I want an `AddressDecoder` class in `CpuZ80.Core` that implements
