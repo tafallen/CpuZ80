@@ -71,6 +71,19 @@ public sealed partial class Cpu
         BuildEdDispatchTable();
     }
 
+    public void Reset()
+    {
+        PC   = 0x0000;
+        SP   = 0xFFFF;
+        IFF1 = false;
+        IFF2 = false;
+        _halted     = false;
+        _nmiPending = false;
+        _intPending = false;
+        _eiDelay    = false;
+        _indexMode  = IndexMode.HL;
+    }
+
     private void BuildDispatchTable()
     {
         for (int i = 0; i < 256; i++)
