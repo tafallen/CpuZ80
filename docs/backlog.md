@@ -158,22 +158,41 @@ the ROM BASIC interpreter.
 
 _ZX80 keyboard matrix — half-row to address line and key mapping:_
 
-| A line low | Port (high byte) | Keys (bits 0–4, active low) |
-|---|---|---|
-| A8  | 0xFE | Shift, Z, X, C, V |
-| A9  | 0xFD | A, S, D, F, G |
-| A10 | 0xFB | Q, W, E, R, T |
-| A11 | 0xF7 | 1, 2, 3, 4, 5 |
-| A12 | 0xEF | 0, 9, 8, 7, 6 |
-| A13 | 0xDF | P, O, I, U, Y |
-| A14 | 0xBF | Enter, L, K, J, H |
-| A15 | 0x7F | Space, SymShift, M, N, B |
+| A line low | Port high byte | Bit 0 | Bit 1 | Bit 2 | Bit 3 | Bit 4 |
+|---|---|---|---|---|---|---|
+| A8  | 0xFE | Shift | Z | X | C | V |
+| A9  | 0xFD | A | S | D | F | G |
+| A10 | 0xFB | Q | W | E | R | T |
+| A11 | 0xF7 | 1 | 2 | 3 | 4 | 5 |
+| A12 | 0xEF | 0 | 9 | 8 | 7 | 6 |
+| A13 | 0xDF | P | O | I | U | Y |
+| A14 | 0xBF | NEWLINE | L | K | J | H |
+| A15 | 0x7F | Space | Period | M | N | B |
+
+Notes:
+- Bit 0 is the outermost key in each row (SHIFT side on left rows, SPACE/0 side on right rows).
+- The ZX80 has **no Symbol Shift key** — that is a ZX Spectrum addition. Bit 1 of the A15
+  row is the **Period (.)** key.
+- The return key is physically labelled **NEWLINE** on the ZX80 keyboard.
+- A pressed key pulls its result bit **low** (active low); unpressed = 1. Bits 5–7 always 1.
 
 The full 16-bit port address is passed to `IPortBus.In(ushort port)`. The high byte
 selects the half-row(s) — a 0 bit in the high byte activates that row. Multiple rows may
-be selected simultaneously (for compound key detection). Result byte bits 4–0 correspond
-to keys right-to-left in the table above; a 0 bit means the key is pressed (active low).
-Bits 5–7 are always 1 (open bus / not used).
+be selected simultaneously (for compound key detection).
+
+_PC keyboard mapping (`PhysicalKey` enum → ZX80 key):_
+
+| ZX80 key | `PhysicalKey` value |
+|---|---|
+| SHIFT | `LeftShift` |
+| A–Z | `A`–`Z` |
+| 0–9 | `D0`–`D9` |
+| NEWLINE | `Return` |
+| SPACE | `Space` |
+| Period | `Period` |
+
+No ZX80 keys lack a direct PC equivalent — the keyboard is purely alphanumeric plus SHIFT,
+NEWLINE, SPACE, and Period.
 
 _New files:_
 - `src/Machines.Zx80/Zx80KeyboardAdapter.cs` — maps `IPhysicalKeyboard` to half-row bytes
