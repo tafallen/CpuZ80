@@ -21,15 +21,18 @@ namespace Machines.Zx80;
 /// </summary>
 public sealed class Zx80Machine
 {
-    private const int    RomSize      = 0x1000;   // 4K
-    private const int    RamSize      = 0x0400;   // 1K
+    private const int    RomSize        = 0x1000; // 4K
+    private const int    RamSize        = 0x0400; // 1K
     private const ulong  CyclesPerFrame = 64167;  // 3,250,000 Hz ÷ 50 Hz
 
     public Cpu Cpu { get; }
     public Ram Ram { get; }
 
+    private readonly Zx80PortBus _ports;
+
     /// <param name="rom">4K ROM image (ZX80 BASIC ROM). Must be exactly 4096 bytes.</param>
-    public Zx80Machine(byte[] rom)
+    /// <param name="keyboard">Physical keyboard source. Pass null for headless/test use.</param>
+    public Zx80Machine(byte[] rom, IPhysicalKeyboard? keyboard = null)
     {
         if (rom.Length != RomSize)
             throw new ArgumentException($"ROM must be {RomSize} bytes, got {rom.Length}.", nameof(rom));
@@ -40,8 +43,14 @@ public sealed class Zx80Machine
         bus.Map(0x0000, 0x0FFF, new Rom(rom));
         bus.Map(0x4000, 0x43FF, Ram);
 
-        Cpu = new Cpu(bus);
+        var kbAdapter = keyboard is not null ? new Zx80KeyboardAdapter(keyboard) : null;
+        _ports = new Zx80PortBus(kbAdapter);
+
+        Cpu = new Cpu(bus, _ports);
     }
+
+    /// <summary>Read a hardware port — delegates to the port bus. Useful for testing.</summary>
+    public byte ReadPort(ushort port) => _ports.In(port);
 
     public void Reset()
     {
