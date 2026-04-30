@@ -172,4 +172,33 @@ public class IndexTests : CpuFixture
         Step();
         Assert.Equal(0x1100, Cpu.IX);
     }
+
+    [Fact]
+    public void LD_IXH_n_LoadsHighByteOfIX()
+    {
+        Cpu.IX = 0x0000;
+        Load(0x0000, 0xDD, 0x26, 0x42); // LD IXH, $42
+        Step();
+        Assert.Equal(0x4200, Cpu.IX);
+    }
+
+    [Fact]
+    public void INC_IXL_IncrementsLowByteOfIX()
+    {
+        Cpu.IX = 0x00FF;
+        Load(0x0000, 0xDD, 0x2C); // INC IXL
+        Step();
+        Assert.Equal(0x0000, Cpu.IX);
+        Assert.True(Cpu.FlagZ);
+    }
+
+    [Fact]
+    public void ADD_A_IXH_AddsHighByteOfIX()
+    {
+        Cpu.A = 0x10;
+        Cpu.IX = 0x0500;
+        Load(0x0000, 0xDD, 0x84); // ADD A, IXH
+        Step();
+        Assert.Equal(0x15, Cpu.A);
+    }
 }

@@ -15,6 +15,7 @@ public sealed partial class Cpu
     private bool _nmiPending;
     private bool _intPending;
     private byte _intDataBus;
+    private bool _eiDelay;
 
     public void TriggerNmi() => _nmiPending = true;
     public void TriggerInt(byte dataBus = 0xFF) { _intPending = true; _intDataBus = dataBus; }
@@ -89,7 +90,7 @@ public sealed partial class Cpu
 
         // Interrupts
         _ops[0xF3] = () => { IFF1 = IFF2 = false; TotalCycles += 4UL; };
-        _ops[0xFB] = () => { IFF1 = IFF2 = true;  TotalCycles += 4UL; };
+        _ops[0xFB] = () => { IFF1 = IFF2 = true; _eiDelay = true; TotalCycles += 4UL; };
 
         // Misc A
         _ops[0x27] = DAA;
@@ -315,17 +316,19 @@ public sealed partial class Cpu
         {
             _halted = false;
             _nmiPending = false;
+            _eiDelay = false;
             AcceptNmi();
             return;
         }
-        if (_intPending && IFF1)
+        if (_intPending && IFF1 && !_eiDelay)
         {
             _halted = false;
             _intPending = false;
             AcceptInt();
             return;
         }
-        if (_halted) { TotalCycles += 4UL; return; }
+        _eiDelay = false;
+        if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); TotalCycles += 4UL; return; }
         byte opcode = Fetch();
         _ops[opcode]();
     }

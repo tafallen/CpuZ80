@@ -4,14 +4,14 @@ public sealed partial class Cpu
 {
     private readonly Action[] _edOps = new Action[256];
     public byte I;
-    private byte R;
+    public byte R;
     private int _interruptMode = 0;
 
     private void BuildEdDispatchTable()
     {
         for (int i = 0; i < 256; i++)
         {
-            _edOps[i] = () => throw new NotImplementedException($"ED Opcode 0x{_bus.Read((ushort)(PC - 1)):X2} not implemented");
+            _edOps[i] = () => { TotalCycles += 8UL; }; // invalid ED opcodes act as NOPs
         }
 
         // 16-bit ADC/SBC
