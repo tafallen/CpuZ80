@@ -96,7 +96,7 @@ the machine class self-contained. The specific gate behaviours to implement inli
 Display RAM (`Ram.RawBytes`) is shared between the CPU bus and `RenderFrame()`, exactly
 as the Acorn Atom's VideoRam is shared with the Mc6847 in the Cpu6502 sibling.
 
-**US-201 — Machines.Zx80 project skeleton**
+~~**US-201 — Machines.Zx80 project skeleton**
 As a developer, I want a `Machines.Zx80` project with a `Zx80Machine` class that wires
 together: `AddressDecoder` bus, 4K `Rom` at `0x0000–0x0FFF`, 1K `Ram` at `0x4000–0x43FF`,
 and the `Cpu` — so that the machine can be constructed from a ROM image and stepped
@@ -104,7 +104,7 @@ instruction by instruction.
 - Constructor: `Zx80Machine(byte[] rom, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)`
 - Public surface: `Cpu`, `Bus`, `Rom`, `Ram`, `Reset()`, `Step()`, `RunFrame()`
 - Acceptance: `Machines.Zx80.Tests` project; test constructs machine with a stub ROM,
-  calls `Reset()`, and asserts `Cpu.PC` is read from the reset vector.
+  calls `Reset()`, and asserts `Cpu.PC` is read from the reset vector.~~ ✓
 
 **Implementation plan — US-201**
 
