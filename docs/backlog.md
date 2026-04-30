@@ -36,6 +36,19 @@ The CPU core is the first milestone. Hardware emulation follows.
 - ROM loading (read-only regions that ignore writes)
 - Configurable memory banking / paging
 
+### ZX80
+- 4K ROM (BASIC interpreter), 1K RAM (expandable to 16K)
+- Memory map: ROM at 0x0000–0x0FFF, RAM at 0x4000+
+- Display: generated in software by CPU — no dedicated video chip
+- Keyboard: 8×5 matrix read via IN instructions
+- Tape: load/save via ROM routines
+
+### ZX81
+- 8K ROM, 1K RAM (expandable to 64K via rear slot)
+- NMI-driven VSYNC (50Hz) for display timing
+- Display: SLOW mode (CPU halted during display generation) and FAST mode
+- Same keyboard and tape interface as ZX80, improved BASIC
+
 ### ZX Spectrum
 - ULA chip: border colour, keyboard matrix, tape interface
 - 48K memory map: 16K ROM + 48K RAM
