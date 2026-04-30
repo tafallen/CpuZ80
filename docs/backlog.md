@@ -120,8 +120,14 @@ _Memory map wired in constructor:_
 0x4000–0x43FF  Ram  (1K — system variables + display file + BASIC program)
 0x4400–0xFFFF  unmapped → 0xFF
 ```
+Note: the ZX80 uses A14-based partial address decoding so the ROM also appears at 0x2000,
+0x8000, and 0xA000, and RAM mirrors throughout 0x4000–0x7FFF and again at 0xC000–0xFFFF.
+The `AddressDecoder` maps only the primary ranges above; mirrors are not needed for correct
+ROM execution but are noted for accuracy if issues arise.
 
-_`Reset()`:_ sets `Cpu.PC = 0x0000`, clears `Cpu.IFF1`/`IFF2`, sets `Cpu.SP = 0xFFFF`.
+_`Reset()`:_ sets `Cpu.PC = 0x0000`, clears `Cpu.IFF1`/`IFF2`, sets `Cpu.SP = 0xFFFF`,
+sets `Cpu.I = 0x0E` (the ZX80 ROM requires I=0x0E so the character generator reads font
+data from the correct ROM offset at 0x0E00).
 The Z80 has no memory-mapped reset vector — it simply starts execution at address 0.
 
 _`Step()`:_ delegates to `Cpu.Step()`.
@@ -133,6 +139,7 @@ _Test cases:_
 1. `Reset_SetsPCToZero` — construct with a minimal 4K ROM stub (all NOPs), call `Reset()`,
    assert `Cpu.PC == 0x0000`.
 2. `Reset_DisablesInterrupts` — assert `Cpu.IFF1 == false` and `Cpu.IFF2 == false` after reset.
+2a. `Reset_SetsIRegisterTo0x0E` — assert `Cpu.I == 0x0E` after reset.
 3. `Step_ExecutesOneInstruction` — load a NOP at 0x0000, call `Step()`, assert `Cpu.PC == 0x0001`.
 4. `RunFrame_AdvancesCyclesByOneFrame` — call `RunFrame()`, assert `Cpu.TotalCycles >= 65000`.
 
@@ -202,27 +209,32 @@ is built by scanning display RAM during `RunFrame()` — so that the screen upda
 **Implementation plan — US-203**
 
 _ZX80 display background:_
-The display file lives in RAM. Each of the 24 character rows is a sequence of 33 bytes:
-a `HALT` (0x76) terminator at the start, then 32 character codes, then another `HALT` at the
-end. The ROM generates video by executing these bytes as instructions — the hardware inverts
-bit 6 of each byte on the data bus so that character codes become NOPs (0x00), allowing
-the CPU to execute them harmlessly. The character font is a table of 8 bytes per character
-embedded in the ROM.
+The display file lives in RAM; its start address is stored in the two-byte `D_FILE` system
+variable at `0x400C`/`0x400D`. The display file has a variable-length structure:
+- Byte 0: `HALT` (0x76) — display file start marker
+- Then 24 rows, each consisting of 0–32 character codes followed by a `HALT` (0x76)
+  terminator. A full screen uses 32 characters per row; BASIC shortens trailing rows.
+- Minimum size: 25 bytes (all rows empty — just the 25 HALT bytes).
+- Maximum size: 793 bytes (25 HALTs + 768 character bytes).
+
+The character font is embedded in the ROM at `0x0E00–0x0FFF` (8 bytes per character,
+64 characters). The `I` register is permanently set to `0x0E` so the CPU's refresh
+addressing always points into this font table during display generation.
 
 _`RunFrame()` additions:_
-- After each `Cpu.Step()`, check if `Cpu.PC` has re-entered the HALT at the end of a
-  display row (detected by the CPU entering the halted state). Increment a scan-line
-  counter. When the counter reaches 24, the frame is complete.
-- Store the current display file start address (read from the `DFILE` system variable at
-  RAM offset `0x400C`) at the start of each frame for use by `RenderFrame()`.
+- At the start of each frame, read `D_FILE` from RAM at `0x400C` (little-endian word)
+  to get the current display file pointer; store for use by `RenderFrame()`.
+- After each `Cpu.Step()`, detect when the CPU enters the halted state (HALT at end of
+  a display row). Increment a scan-line counter. When the counter reaches 24, the
+  display portion of the frame is complete.
 
 _`RenderFrame(IVideoSink sink)`:_
 - Allocate a 256×192 `uint[]` pixel buffer (ARGB32).
-- Walk the 24 character rows of the display file in RAM.
-- For each of the 32 character codes per row, look up 8 scan-line bytes from the ROM
-  character table (base address TBD from ROM disassembly; font starts at a fixed ROM
-  offset). Each bit in the font byte maps to one pixel: 1 = ink (black, `0xFF000000`),
-  0 = paper (white, `0xFFFFFFFF`).
+- Walk the display file in RAM starting at the address read from `D_FILE`. Skip the
+  initial HALT byte. For each of the 24 rows, read character codes until the next HALT
+  terminator; pad short rows with space (0x00) to fill 32 columns.
+- For each character code, look up 8 font bytes from ROM at `0x0E00 + (charCode * 8)`.
+  Each bit maps to one pixel: 1 = ink (black, `0xFF000000`), 0 = paper (white, `0xFFFFFFFF`).
 - Call `sink.SubmitFrame(pixels, 256, 192)`.
 
 _NOP mapper (inline, no separate class):_
@@ -247,7 +259,7 @@ _Test cases:_
 
 **US-204 — ZX80 tape**
 As a user, I want `ITapeDevice` wired to the ROM's load/save routines via the relevant
-memory-mapped I/O so that `.p` / `.o` tape images can be loaded into the emulator.
+memory-mapped I/O so that `.o` / `.80` tape images can be loaded into the emulator.
 - Acceptance: test loads a known tape image and asserts that RAM contains the expected bytes
   after the ROM load routine completes.
 
@@ -258,20 +270,21 @@ The ZX80 uses a single-bit serial interface:
 - **Save**: ROM pulses the MIC output (port `0xFE` bit 3, `OUT`) to write bits to tape.
 - **Load**: ROM reads the EAR input (port `0xFE` bit 6, `IN`) to read bits from tape.
 
-The `.p` file format is a raw memory dump starting at system variable `VERSN` (0x4009)
-and ending at the top of the BASIC program area. On load, the ROM reads bits from EAR
-and reconstructs bytes, then writes them back to RAM from 0x4009 upward.
+ZX80 tape file format is `.o` (also seen as `.80`) — **not `.p`**, which is the ZX81 format.
+The file is a raw memory dump of RAM from `0x4000` to the end of the BASIC program area
+(system variables + display file + BASIC program + variables). On load, the ROM reads bits
+from EAR and reconstructs bytes, writing them back into RAM from `0x4000` upward.
 
 _Implementation:_
-- `Zx80PortBus.In(port)`: if bit 6 of the high byte is relevant to EAR, return
+- `Zx80PortBus.In(port)`: if EAR input is addressed, return
   `ITapeDevice.ReadBit() ? 0xFF : 0xBF` (bit 6 low = pulse detected).
-- `Zx80PortBus.Out(port, value)`: if port matches MIC output, call
+- `Zx80PortBus.Out(port, value)`: if MIC output is addressed, call
   `ITapeDevice.WriteBit((value & 0x08) != 0)`.
 - Provide a `Zx80TapeAdapter` that implements `ITapeDevice` and streams bits from a
-  `.p` file byte array using the ZX80 pulse encoding (leader tone + data bytes).
+  `.o` file byte array using the ZX80 pulse encoding (leader tone + data bytes).
 
 _New files:_
-- `src/Machines.Zx80/Zx80TapeAdapter.cs` — `ITapeDevice` implementation for `.p` files
+- `src/Machines.Zx80/Zx80TapeAdapter.cs` — `ITapeDevice` implementation for `.o` files
 
 _Changes:_
 - `Zx80PortBus.cs` — add EAR read and MIC write routing
