@@ -38,11 +38,11 @@ The CPU core is the first milestone. Hardware emulation follows.
 Mirrors the pattern established in the sibling Cpu6502 project so that machines are built
 from reusable, independently testable components.
 
-**US-101 — Rom class**
+~~**US-101 — Rom class**
 As a machine builder, I want a `Rom` class in `CpuZ80.Core` that implements `IBus`, accepts
 a `byte[]` on construction, returns bytes on read, and silently ignores writes — so that ROM
 regions behave correctly when mapped into an `AddressDecoder`.
-- Acceptance: unit tests confirm reads return loaded data; writes are a no-op with no exception.
+- Acceptance: unit tests confirm reads return loaded data; writes are a no-op with no exception.~~ ✓
 
 **US-102 — Ram improvements**
 As a machine builder, I want `CpuZ80.Core.Ram` to expose a `RawBytes` property and a
