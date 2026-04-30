@@ -61,13 +61,13 @@ discrete components without custom bus logic in each machine.
   (last wins), unmapped read returns `0xFF`, unmapped write is silent, device sees
   zero-based offset (address minus region base).~~ ✓
 
-**US-104 — Machines.Common project**
+~~**US-104 — Machines.Common project**
 As a machine builder, I want a `Machines.Common` project (namespace `Machines.Common`)
 containing the shared host-integration interfaces — `IVideoSink`, `IAudioSink`,
 `IPhysicalKeyboard`, `ITapeDevice`, and the `PhysicalKey` enum — matching the identical
 interfaces in the Cpu6502 sibling project so that host adapters (Raylib, WPF, etc.) can
 target both emulators without duplication.
-- Acceptance: project compiles; interfaces are identical in signature to `Cpu6502/src/Machines.Common`.
+- Acceptance: project compiles; interfaces are identical in signature to `Cpu6502/src/Machines.Common`.~~ ✓
 
 ---
 
