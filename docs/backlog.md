@@ -145,14 +145,14 @@ _Test cases:_
 
 ---
 
-**US-202 — ZX80 keyboard matrix**
+~~**US-202 — ZX80 keyboard matrix**
 As a user, I want the ZX80 keyboard (8 half-rows × 5 keys) decoded from `IPhysicalKeyboard`
 and returned via `IN` reads on the lower address bus — so that key presses are visible to
 the ROM BASIC interpreter.
 - Implementation: `IPortBus` inner class inside `Zx80Machine`; address lines A8–A15
   select the half-row, result byte has bits 0–4 low for pressed keys (active low).
 - Acceptance: tests drive `IPhysicalKeyboard` stubs and assert the correct `IN` result byte
-  for each half-row.
+  for each half-row.~~ ✓
 
 **Implementation plan — US-202**
 
