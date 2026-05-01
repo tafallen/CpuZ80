@@ -9,3 +9,6 @@ TestResults/
 *.suo
 *.userosscache
 *.sln.docstates
+
+# Worktrees
+.worktrees/
