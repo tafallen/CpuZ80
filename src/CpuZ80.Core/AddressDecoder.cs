@@ -25,7 +25,17 @@ public sealed class AddressDecoder : IBus
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
     public void Map(ushort from, ushort to, IBus device)
-        => _mappings.Add(new Mapping(from, to, device));
+    {
+        _mappings.Add(new Mapping(from, to, device)); // Keep for now
+
+        int startPage = from >> 8;
+        int endPage = to >> 8;
+
+        for (int i = startPage; i <= endPage; i++)
+        {
+            _pages[i] = new PageEntry(device, from);
+        }
+    }
 
     public byte Read(ushort address)
     {
