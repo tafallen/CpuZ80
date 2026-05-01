@@ -249,46 +249,34 @@ regardless of the actual character value, while simultaneously latching the char
 for the video shift register. When the CPU fetches a `HALT` (0x76) byte — the row
 terminator — the hardware lets the real value through, so the CPU actually executes HALT.
 
-**NMI generation**: while the CPU is HALTed (internally looping NOPs to keep the refresh
-register incrementing), the hardware monitors bit 6 of the R register. When bit 6
-transitions from 1→0 (the lower 7 bits of R wrap from 0x7F to 0x00), an NMI is triggered.
-This wakes the CPU from HALT and the ROM's NMI handler advances to the next display line.
-This cycle repeats 24 times, then the ROM exits the display routine.
+**Note: the stock ZX80 has no NMI generator.** NMI is a ZX81 ULA feature (see US-302).
+The ZX80 display blanks whenever BASIC is running; the display is only visible while the
+ROM's display routine is executing the display file. No NMI injection is needed in
+`RunFrame()` for the ZX80.
 
-**NMI is gated**: NMI is only generated when the CPU is fetching from addresses ≥ 0x8000
-(the phantom display copy). During normal BASIC execution (PC in 0x0000–0x7FFF) the
-NMI circuit is disabled, so R wrapping does not generate spurious NMIs.
+The NMI mechanism (R bit 6 falling edge, gated by port writes OUT FEh/FDh) belongs
+entirely to the ZX81 implementation (US-302).
 
-_`RunFrame()` additions:_
-- At the start of each frame, snapshot `D_FILE` from RAM at `0x400C` (little-endian word)
-  for use by `RenderFrame()`.
-- NMI generation: after each `Cpu.Step()`, if the CPU is halted AND `Cpu.PC >= 0x8000`
-  AND the R register's bit 6 has just transitioned from 1→0, call `Cpu.TriggerNmi()`.
-  Track the previous R bit 6 value to detect the falling edge.
-- Run until `Cpu.TotalCycles` has advanced by 64,167 T-states.
+_`RunFrame()`:_ no changes needed beyond what US-201 already provides.
 
-_`RenderFrame(IVideoSink sink)`:_
+_`RenderFrame(IVideoSink sink)` — new method:_
+- Store `_romBytes` as a `byte[]` field in the constructor (copied before passing to
+  `new Rom(rom)`) so font data is accessible without going through the bus.
 - Allocate a 256×192 `uint[]` pixel buffer (ARGB32). This is decoupled from CPU
   execution — read the display file directly from RAM.
-- Walk the display file in RAM starting at the address stored in `D_FILE`. Skip the
-  initial HALT byte. For each of the 24 rows, read character codes until the next HALT
-  terminator; pad short rows with space (0x00) to fill 32 columns.
+- Read `D_FILE` pointer from `Ram.RawBytes` at offset `0x000C`/`0x000D` (= RAM
+  addresses `0x400C`/`0x400D`, little-endian word). Subtract `0x4000` to get offset
+  into `Ram.RawBytes`.
+- Skip the initial HALT byte. For each of the 24 rows, read character codes until the
+  next HALT terminator; pad short rows with space (0x00) to fill 32 columns.
 - For each character code:
   - Extract the base code: `base = charCode & 0x3F` (lower 6 bits index the character).
   - Determine inversion: `inverted = (charCode & 0x80) != 0` (bit 7 set = inverse video).
-  - Look up 8 font bytes from ROM at `0x0E00 + (base * 8)`.
+  - Look up 8 font bytes from `_romBytes` at `0x0E00 + (base * 8)`.
   - For each font byte, expand bits to pixels: bit 7 = leftmost pixel.
     If `inverted`, swap ink and paper colours.
   - Ink = black (`0xFF000000`), paper = white (`0xFFFFFFFF`).
 - Call `sink.SubmitFrame(pixels, 256, 192)`.
-
-_What the emulator does NOT need to implement:_
-- The hardware NOP substitution (bit 6 inversion on M1 fetches from ≥ 0x8000) is a
-  hardware-only concern. The CPU in this emulator never fetches from those addresses
-  during normal execution; the ROM drives PC into the phantom range during display scan,
-  but since our `AddressDecoder` returns the same RAM content at both 0x4000 and (if
-  mirrored) 0xC000, the CPU sees the real character codes. The NMI mechanism replaces
-  the hardware timing signal, so no special M1 interception is needed.
 
 _New files:_
 - No new source files — all logic added to `Zx80Machine.cs`.
@@ -303,9 +291,6 @@ _Test cases:_
    bit 7 set (e.g. 0x80 = inverted space); assert those pixels are black (`0xFF000000`)
    rather than white.
 4. `RenderFrame_CorrectDimensions` — assert submitted frame is exactly 256×192.
-5. `NmiGeneration_FiredOnRBit6FallingEdge` — with CPU halted and PC ≥ 0x8000, set R
-   to 0x7F, call `Step()` (which increments R to 0x00, bit 6 falls), assert NMI was
-   triggered.
 
 ---
 
