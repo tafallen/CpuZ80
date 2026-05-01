@@ -7,8 +7,20 @@ namespace CpuZ80.Core;
 /// </summary>
 public sealed class AddressDecoder : IBus
 {
-    private readonly record struct Mapping(ushort From, ushort To, IBus Device);
+    private readonly struct PageEntry
+    {
+        public readonly IBus? Device;
+        public readonly ushort BaseAddress;
 
+        public PageEntry(IBus? device, ushort baseAddress)
+        {
+            Device = device;
+            BaseAddress = baseAddress;
+        }
+    }
+
+    private readonly PageEntry[] _pages = new PageEntry[256];
+    private readonly record struct Mapping(ushort From, ushort To, IBus Device);
     private readonly List<Mapping> _mappings = new();
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
