@@ -24,6 +24,11 @@ public sealed class AddressDecoder : IBus
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
     public void Map(ushort from, ushort to, IBus device)
     {
+        if (from % 256 != 0 || (to & 0xFF) != 0xFF)
+        {
+            throw new ArgumentException("Address mapping must be page-aligned (256-byte increments).");
+        }
+
         int startPage = from >> 8;
         int endPage = to >> 8;
 
