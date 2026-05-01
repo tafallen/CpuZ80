@@ -294,11 +294,11 @@ _Test cases:_
 
 ---
 
-**US-204 — ZX80 tape**
+~~**US-204 — ZX80 tape**
 As a user, I want `ITapeDevice` wired to the ROM's load/save routines via the relevant
 memory-mapped I/O so that `.o` / `.80` tape images can be loaded into the emulator.
 - Acceptance: test loads a known tape image and asserts that RAM contains the expected bytes
-  after the ROM load routine completes.
+  after the ROM load routine completes.~~ ✓
 
 **Implementation plan — US-204**
 
