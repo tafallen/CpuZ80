@@ -1,4 +1,5 @@
 using CpuZ80.Core;
+using Machines.Common;
 
 namespace Machines.Zx80;
 
@@ -6,22 +7,39 @@ namespace Machines.Zx80;
 /// ZX80 I/O port bus.
 ///
 /// IN  port: high byte selects keyboard half-row(s); returns active-low key state.
-/// OUT port: reserved for tape MIC output (US-204).
+///           Bit 6 of the result reflects the EAR tape input (0 = pulse, 1 = silence).
+/// OUT port: bit 3 drives the MIC tape output.
 /// </summary>
 internal sealed class Zx80PortBus : IPortBus
 {
     private readonly Zx80KeyboardAdapter? _keyboard;
+    private readonly ITapeDevice?         _tape;
 
-    public Zx80PortBus(Zx80KeyboardAdapter? keyboard) => _keyboard = keyboard;
+    public Zx80PortBus(Zx80KeyboardAdapter? keyboard, ITapeDevice? tape = null)
+    {
+        _keyboard = keyboard;
+        _tape     = tape;
+    }
 
     public byte In(ushort port)
     {
-        byte highByte = (byte)(port >> 8);
-        return _keyboard?.Read(highByte) ?? 0xFF;
+        byte result = _keyboard?.Read((byte)(port >> 8)) ?? 0xFF;
+
+        // Bit 6: EAR input — 0 = pulse present, 1 = silence. Default high (no tape).
+        if (_tape is not null)
+        {
+            bool pulse = !_tape.ReadBit(); // ReadBit() true = silence, false = pulse
+            if (pulse)
+                result &= 0xBF; // clear bit 6
+            else
+                result |= 0x40; // set bit 6
+        }
+
+        return result;
     }
 
     public void Out(ushort port, byte value)
     {
-        // US-204: tape MIC output (port 0xFE bit 3) handled here.
+        _tape?.WriteBit((value & 0x08) != 0); // bit 3 = MIC output
     }
 }

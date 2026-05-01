@@ -36,7 +36,8 @@ public sealed class Zx80Machine
 
     /// <param name="rom">4K ROM image (ZX80 BASIC ROM). Must be exactly 4096 bytes.</param>
     /// <param name="keyboard">Physical keyboard source. Pass null for headless/test use.</param>
-    public Zx80Machine(byte[] rom, IPhysicalKeyboard? keyboard = null)
+    /// <param name="tape">Tape device. Pass null for no tape.</param>
+    public Zx80Machine(byte[] rom, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)
     {
         if (rom.Length != RomSize)
             throw new ArgumentException($"ROM must be {RomSize} bytes, got {rom.Length}.", nameof(rom));
@@ -50,13 +51,16 @@ public sealed class Zx80Machine
         bus.Map(0x4000, 0x43FF, Ram);
 
         var kbAdapter = keyboard is not null ? new Zx80KeyboardAdapter(keyboard) : null;
-        _ports = new Zx80PortBus(kbAdapter);
+        _ports = new Zx80PortBus(kbAdapter, tape);
 
         Cpu = new Cpu(bus, _ports);
     }
 
     /// <summary>Read a hardware port — delegates to the port bus. Useful for testing.</summary>
     public byte ReadPort(ushort port) => _ports.In(port);
+
+    /// <summary>Write a hardware port — delegates to the port bus. Useful for testing.</summary>
+    public void WritePort(ushort port, byte value) => _ports.Out(port, value);
 
     public void Reset()
     {
