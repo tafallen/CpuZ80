@@ -214,7 +214,7 @@ _Test cases (in `Zx80MachineTests.cs` or a new `Zx80KeyboardTests.cs`):_
 
 ---
 
-**US-203 — ZX80 display (software vsync)**
+~~**US-203 — ZX80 display (software vsync)**
 As a user, I want `RenderFrame()` to accept an `IVideoSink` and produce the ZX80's
 software-generated 256×192 display — the CPU writes character data to RAM and the display
 is built by scanning display RAM during `RunFrame()` — so that the screen updates at ~50 Hz.
@@ -223,7 +223,7 @@ is built by scanning display RAM during `RunFrame()` — so that the screen upda
   character table, and submits an ARGB32 frame to `IVideoSink`. NOP-mapper logic
   (bit 6 inversion) applied inline during display scan. No separate chip class.
 - Acceptance: integration test with a minimal ROM that writes a known character to display
-  RAM; `RenderFrame()` produces the expected pixel pattern.
+  RAM; `RenderFrame()` produces the expected pixel pattern.~~ ✓
 
 **Implementation plan — US-203**
 
