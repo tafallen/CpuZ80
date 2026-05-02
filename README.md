@@ -46,11 +46,13 @@ Console.WriteLine($"Cycles: {cpu.TotalCycles}");
 
 ## Architecture
 
-The CPU uses a tiered dispatch table system:
-- **Base Table**: 256 opcodes.
-- **CB Table**: 256 bitwise/rotate/shift opcodes.
-- **ED Table**: Extended instructions and block operations.
-- **DD/FD Tables**: Re-mapping of the base/CB tables for IX and IY indexed addressing.
+The emulator is designed for performance and maintainability through two core architectural features:
+
+- **O(1) Memory Routing**: The `AddressDecoder` uses a 256-entry page table to route memory access in constant time, regardless of mapping complexity. Mappings are enforced on 256-byte page boundaries for stability and speed.
+- **Hybrid Instruction Dispatch**:
+    - **Fast Path (CodeGen)**: Performance-critical instructions (e.g., `NOP`, `ADD A, r`) are executed via a code-generated `switch` statement in `StepGenerated()`, eliminating delegate overhead.
+    - **Tiered Dispatch Tables**: Less frequent or complex instructions use a modular system of `Action[]` arrays (`_ops`, `_cbOps`, `_edOps`, etc.).
+    - **IndexMode**: A transient state pattern handles `IX` and `IY` prefixing without code duplication.
 
 ## Validating correctness
 

@@ -77,6 +77,19 @@ interfaces in the Cpu6502 sibling project so that host adapters (Raylib, WPF, et
 target both emulators without duplication.
 - Acceptance: project compiles; interfaces are identical in signature to `Cpu6502/src/Machines.Common`.~~ ✓
 
+### Performance & Architecture Improvements (Epic 1.5)
+
+~~**US-151 — O(1) Memory Routing**
+As a developer, I want the `AddressDecoder` to use an O(1) page table instead of O(N) list iteration — so that emulation speed remains constant as mapping complexity increases.
+- Acceptance: tests verify correct routing for page-aligned (256-byte) mappings; unaligned mappings throw `ArgumentException`.~~ ✓
+
+**US-152 — Instruction Code Generator**
+As a developer, I want a code generator that produces a high-performance `switch` dispatcher — so that instruction execution bypasses delegate overhead and benefits from JIT jump tables.
+- [x] Generator framework (`CpuZ80.CodeGen`) implemented.
+- [x] "Hot path" instructions (`NOP`, `ADD A, r`) migrated to `StepGenerated()`.
+- [ ] Migrate remaining 8-bit and 16-bit instructions.
+- [ ] Migrate prefixed instructions (`CB`, `ED`, `DD`, `FD`).
+
 ---
 
 ### Epic 2 — ZX80 Machine

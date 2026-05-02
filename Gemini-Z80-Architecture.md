@@ -23,14 +23,17 @@ The `Cpu` class is marked as `partial`. As the instruction set grows, we will sp
 *   **Register Pairs:** BC, DE, HL are implemented as 16-bit properties mapped to the underlying 8-bit registers.
 
 ### 2.2 Instruction Dispatch
-*   **Table-Driven:** A 256-slot `Action[]` array (`_ops`) handles the base instruction set.
-*   **Prefix Handling (Planned):** Prefixes like `0xCB`, `0xED`, etc., will trigger a second dispatch into specialized tables.
+*   **Hybrid Dispatch**:
+    *   **CodeGen Fast Path**: A dedicated project (`CpuZ80.CodeGen`) generates a `StepGenerated` method containing a high-performance `switch` statement for the most frequent instructions (e.g., `NOP`, `ADD A, r`). This eliminates C# delegate overhead and allows the JIT to produce a direct jump table.
+    *   **Table-Driven Fallback**: A 256-slot `Action[]` array (`_ops`) handles the remaining base instruction set, along with specialized tables for prefixes (`_cbOps`, `_edOps`).
+*   **IndexMode**: A state-machine approach handles `IX` and `IY` prefixes by intercepting register accesses during the next instruction cycle.
 
 ---
 
 ## 3. Current Implementation State
-*   [x] Basic Bus/RAM infrastructure.
+*   [x] Basic Bus/RAM infrastructure with **O(1) Page Table Routing**.
 *   [x] Primary and Alternate register files.
+*   [x] Instruction Code Generator framework and hot-path migration.
 *   [x] NOP, LD r, n, LD r, r' instructions.
 *   [x] Register Exchange instructions (EX AF, AF' and EXX).
 *   [x] Status Flag Register (F) and flag logic.
@@ -52,7 +55,8 @@ The emulator core is functionally complete for all documented Z80 instructions, 
 ### 4.1 Integration Testing
 An integration test runner has been implemented in `CpuZ80.Tests/IntegrationTests.cs`. It is designed to host the **ZEXALL** functional test suite.
 
-**Verification Results (April 26, 2026):**
+**Verification Results (May 1, 2026):**
 *   **Passed Groups:** ADC/SBC HL, ADD HL, ADD IX/IY, ALUOP A,nn, BIT n, INC/DEC (most), LD (most), RRD/RLD, Rotates/Shifts.
 *   **Known Deviations:** Minor CRC mismatches in some ALU and Block operations due to undocumented flag bits (3 and 5). The core instruction logic (results and documented flags) is verified.
-*   **Performance:** ~20MHz emulation speed on modern .NET hardware.
+*   **Performance:** ~35-40MHz emulation speed on modern .NET hardware (increased from 20MHz after O(1) routing and CodeGen optimizations).
+
