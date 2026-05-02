@@ -2,6 +2,24 @@
 
 This guide builds up from running a single instruction to inspecting Z80-specific state and register sets.
 
+## Repository structure
+
+```
+CpuZ80/
+  src/
+    CpuZ80.Core/        — CPU, Ram, Rom, AddressDecoder, IBus, IPortBus
+    Machines.Common/    — IVideoSink, IAudioSink, IPhysicalKeyboard, ITapeDevice, PhysicalKey
+    Machines.Zx80/      — ZX80 machine compositor
+    Adapters.Raylib/    — Raylib window: IVideoSink + IPhysicalKeyboard (copied from Cpu6502)
+    Host.Zx80/          — ZX80 runnable entry point
+  tests/
+    CpuZ80.Tests/
+    Machines.Zx80.Tests/
+```
+
+`Adapters.Raylib` and `Machines.Common` are copied from the sibling `Cpu6502` repo rather
+than shared via a cross-repo reference. A future shared-adapters repo will replace the copies.
+
 ---
 
 ## 1. The bus interfaces

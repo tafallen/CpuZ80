@@ -5,6 +5,14 @@
 Emulate the Z80 CPU accurately enough to run 80s computer OS ROMs (CP/M, ZX Spectrum, etc.).
 The CPU core is the first milestone. Hardware emulation follows.
 
+## Repository strategy
+
+This repo (`CpuZ80`) and its sibling (`Cpu6502`) share the same composable architecture and
+`Machines.Common` interfaces. Platform adapters (e.g. `Adapters.Raylib`) are **copied** into
+each repo rather than shared via cross-repo project references. The intent is to eventually
+extract `Machines.Common` and the adapters into a third shared repo; until that exists, keep
+copies in sync manually. Do not add cross-repo project references.
+
 ---
 
 ## Z80 CPU — Remaining Work
