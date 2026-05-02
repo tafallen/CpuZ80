@@ -106,16 +106,16 @@ public sealed partial class Cpu
         _ops[0xFB] = () => { IFF1 = IFF2 = true; _eiDelay = true; TotalCycles += 4UL; };
 
         // Misc A
-        _ops[0x27] = DAA;
+        _ops[0x27] = () => { DAA(); TotalCycles += 4UL; };
         _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; TotalCycles += 4UL; };
         _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; TotalCycles += 4UL; };
         _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; TotalCycles += 4UL; };
 
         // 8-bit Rotates (Base table)
-        _ops[0x07] = RLCA;
-        _ops[0x0F] = RRCA;
-        _ops[0x17] = RLA;
-        _ops[0x1F] = RRA;
+        _ops[0x07] = () => { RLCA(); TotalCycles += 4UL; };
+        _ops[0x0F] = () => { RRCA(); TotalCycles += 4UL; };
+        _ops[0x17] = () => { RLA(); TotalCycles += 4UL; };
+        _ops[0x1F] = () => { RRA(); TotalCycles += 4UL; };
 
         // LD dd, nn
         _ops[0x01] = () => { SetReg16(0, FetchWord()); TotalCycles += 10UL; };
@@ -196,67 +196,67 @@ public sealed partial class Cpu
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x80 | s] = () => { DoAdd(GetReg(src)); if (src == 6) TotalCycles += 3UL; }; // (HL) takes 7 cycles total
+            _ops[0x80 | s] = () => { DoAdd(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // ADC A, r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x88 | s] = () => { DoAdc(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0x88 | s] = () => { DoAdc(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // SUB r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x90 | s] = () => { DoSub(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0x90 | s] = () => { DoSub(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // SBC A, r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x98 | s] = () => { DoSbc(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0x98 | s] = () => { DoSbc(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // AND r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xA0 | s] = () => { DoAnd(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0xA0 | s] = () => { DoAnd(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // XOR r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xA8 | s] = () => { DoXor(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0xA8 | s] = () => { DoXor(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // OR r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xB0 | s] = () => { DoOr(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0xB0 | s] = () => { DoOr(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // CP r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xB8 | s] = () => { DoCp(GetReg(src)); if (src == 6) TotalCycles += 3UL; };
+            _ops[0xB8 | s] = () => { DoCp(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
         }
 
         // Immediate arithmetic
-        _ops[0xC6] = () => { DoAdd(Fetch()); TotalCycles += 3UL; }; // ADD A, n (4+3=7)
-        _ops[0xCE] = () => { DoAdc(Fetch()); TotalCycles += 3UL; }; // ADC A, n (4+3=7)
-        _ops[0xD6] = () => { DoSub(Fetch()); TotalCycles += 3UL; }; // SUB n
-        _ops[0xDE] = () => { DoSbc(Fetch()); TotalCycles += 3UL; }; // SBC A, n
-        _ops[0xE6] = () => { DoAnd(Fetch()); TotalCycles += 3UL; }; // AND n
-        _ops[0xEE] = () => { DoXor(Fetch()); TotalCycles += 3UL; }; // XOR n
-        _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 3UL; }; // OR n
-        _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 3UL; }; // CP n
+        _ops[0xC6] = () => { DoAdd(Fetch()); TotalCycles += 7UL; };
+        _ops[0xCE] = () => { DoAdc(Fetch()); TotalCycles += 7UL; };
+        _ops[0xD6] = () => { DoSub(Fetch()); TotalCycles += 7UL; };
+        _ops[0xDE] = () => { DoSbc(Fetch()); TotalCycles += 7UL; };
+        _ops[0xE6] = () => { DoAnd(Fetch()); TotalCycles += 7UL; };
+        _ops[0xEE] = () => { DoXor(Fetch()); TotalCycles += 7UL; };
+        _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 7UL; };
+        _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 7UL; };
 
         // I/O
         _ops[0xD3] = () => { _ports?.Out((ushort)((A << 8) | Fetch()), A); TotalCycles += 11UL; };
@@ -345,8 +345,8 @@ public sealed partial class Cpu
         
         byte opcode = Fetch();
         
-        // Use generator for NOP as a test, fallback to delegate array for rest
-        if (opcode == 0x00)
+        // Use generator for NOP and ADD A, r
+        if (opcode == 0x00 || (opcode >= 0x80 && opcode <= 0x87))
         {
             StepGenerated(opcode);
         }

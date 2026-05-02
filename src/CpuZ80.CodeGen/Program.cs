@@ -22,6 +22,16 @@ class Program
         sb.AppendLine("        switch (opcode)");
         sb.AppendLine("        {");
         sb.AppendLine("            case 0x00: /* NOP */ TotalCycles += 4UL; break;");
+
+        string[] regs = { "B", "C", "D", "E", "H", "L", "_bus.Read(HL)", "A" };
+        for (int i = 0; i < 8; i++)
+        {
+            int opcode = 0x80 + i;
+            string reg = regs[i];
+            int cycles = (i == 6) ? 7 : 4;
+            sb.AppendLine($"            case 0x{opcode:X2}: /* ADD A, {reg} */ DoAdd({reg}); TotalCycles += {cycles}UL; break;");
+        }
+
         sb.AppendLine("            default:");
         sb.AppendLine("                throw new System.NotImplementedException($\"Opcode 0x{opcode:X2} not implemented in generator.\");");
         sb.AppendLine("        }");

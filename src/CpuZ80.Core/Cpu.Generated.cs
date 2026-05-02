@@ -11,6 +11,14 @@ public sealed partial class Cpu
         switch (opcode)
         {
             case 0x00: /* NOP */ TotalCycles += 4UL; break;
+            case 0x80: /* ADD A, B */ DoAdd(B); TotalCycles += 4UL; break;
+            case 0x81: /* ADD A, C */ DoAdd(C); TotalCycles += 4UL; break;
+            case 0x82: /* ADD A, D */ DoAdd(D); TotalCycles += 4UL; break;
+            case 0x83: /* ADD A, E */ DoAdd(E); TotalCycles += 4UL; break;
+            case 0x84: /* ADD A, H */ DoAdd(H); TotalCycles += 4UL; break;
+            case 0x85: /* ADD A, L */ DoAdd(L); TotalCycles += 4UL; break;
+            case 0x86: /* ADD A, _bus.Read(HL) */ DoAdd(_bus.Read(HL)); TotalCycles += 7UL; break;
+            case 0x87: /* ADD A, A */ DoAdd(A); TotalCycles += 4UL; break;
             default:
                 throw new System.NotImplementedException($"Opcode 0x{opcode:X2} not implemented in generator.");
         }

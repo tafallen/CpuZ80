@@ -20,8 +20,6 @@ public sealed partial class Cpu
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        
-        TotalCycles += 4UL; 
     }
 
     private byte DoInc(byte val)
@@ -70,8 +68,6 @@ public sealed partial class Cpu
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        
-        TotalCycles += 4UL; 
     }
 
     private void DoAdd16(ushort val)
@@ -96,7 +92,6 @@ public sealed partial class Cpu
         FlagH = true;
         FlagC = false;
         SetLogicFlags(A);
-        TotalCycles += 4UL;
     }
 
     private void DoOr(byte val)
@@ -106,7 +101,6 @@ public sealed partial class Cpu
         FlagH = false;
         FlagC = false;
         SetLogicFlags(A);
-        TotalCycles += 4UL;
     }
 
     private void DoXor(byte val)
@@ -116,7 +110,6 @@ public sealed partial class Cpu
         FlagH = false;
         FlagC = false;
         SetLogicFlags(A);
-        TotalCycles += 4UL;
     }
 
     private void DoCp(byte val)
@@ -150,7 +143,6 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        TotalCycles += 4UL;
     }
 
     private void RRCA()
@@ -160,7 +152,6 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        TotalCycles += 4UL;
     }
 
     private void RLA()
@@ -171,7 +162,6 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        TotalCycles += 4UL;
     }
 
     private void RRA()
@@ -182,7 +172,6 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         F = (byte)((F & ~0x28) | (A & 0x28));
-        TotalCycles += 4UL;
     }
 
     private void DAA()
@@ -211,6 +200,5 @@ public sealed partial class Cpu
         FlagS = (A & 0x80) != 0;
         FlagPV = GetParity(A);
         F = (byte)((F & ~0x28) | (A & 0x28));
-        TotalCycles += 4UL;
     }
 }
