@@ -77,4 +77,32 @@ public class AddressDecoderTests
         Assert.Equal(0x55, ram.Read(0x0001));
         Assert.Equal(0x00, ram.Read(0x4001 - 0x4000 + 1)); // same thing expressed differently
     }
+
+    [Fact]
+    public void Map_FromNotPageAligned_ThrowsArgumentException()
+    {
+        var ram = new Ram(0x100);
+        var decoder = new AddressDecoder();
+        var ex = Assert.Throws<ArgumentException>(() => decoder.Map(0x0001, 0x00FF, ram));
+        Assert.Equal("Address mapping must be page-aligned (256-byte increments).", ex.Message);
+    }
+
+    [Fact]
+    public void Map_ToNotPageAligned_ThrowsArgumentException()
+    {
+        var ram = new Ram(0x100);
+        var decoder = new AddressDecoder();
+        var ex = Assert.Throws<ArgumentException>(() => decoder.Map(0x0000, 0x00FE, ram));
+        Assert.Equal("Address mapping must be page-aligned (256-byte increments).", ex.Message);
+    }
+
+    [Fact]
+    public void Map_PageAligned_Succeeds()
+    {
+        var ram = new Ram(0x100);
+        var decoder = new AddressDecoder();
+        decoder.Map(0x0000, 0x00FF, ram); // Should not throw
+        decoder.Map(0x4000, 0x4FFF, ram); // Should not throw
+        decoder.Map(0x0000, 0xFFFF, ram); // Should not throw
+    }
 }

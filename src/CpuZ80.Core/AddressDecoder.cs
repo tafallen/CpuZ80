@@ -7,35 +7,46 @@ namespace CpuZ80.Core;
 /// </summary>
 public sealed class AddressDecoder : IBus
 {
-    private readonly record struct Mapping(ushort From, ushort To, IBus Device);
+    private readonly struct PageEntry
+    {
+        public readonly IBus? Device;
+        public readonly ushort BaseAddress;
 
-    private readonly List<Mapping> _mappings = new();
+        public PageEntry(IBus? device, ushort baseAddress)
+        {
+            Device = device;
+            BaseAddress = baseAddress;
+        }
+    }
+
+    private readonly PageEntry[] _pages = new PageEntry[256];
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
     public void Map(ushort from, ushort to, IBus device)
-        => _mappings.Add(new Mapping(from, to, device));
+    {
+        if (from % 256 != 0 || (to & 0xFF) != 0xFF)
+        {
+            throw new ArgumentException("Address mapping must be page-aligned (256-byte increments).");
+        }
+
+        int startPage = from >> 8;
+        int endPage = to >> 8;
+
+        for (int i = startPage; i <= endPage; i++)
+        {
+            _pages[i] = new PageEntry(device, from);
+        }
+    }
 
     public byte Read(ushort address)
     {
-        var (device, from) = Resolve(address);
-        return device is not null ? device.Read((ushort)(address - from)) : (byte)0xFF;
+        var entry = _pages[address >> 8];
+        return entry.Device is not null ? entry.Device.Read((ushort)(address - entry.BaseAddress)) : (byte)0xFF;
     }
 
     public void Write(ushort address, byte value)
     {
-        var (device, from) = Resolve(address);
-        device?.Write((ushort)(address - from), value);
-    }
-
-    // Iterate in reverse so the last-registered mapping wins on overlap.
-    private (IBus? Device, ushort From) Resolve(ushort address)
-    {
-        for (int i = _mappings.Count - 1; i >= 0; i--)
-        {
-            var m = _mappings[i];
-            if (address >= m.From && address <= m.To)
-                return (m.Device, m.From);
-        }
-        return (null, 0);
+        var entry = _pages[address >> 8];
+        entry.Device?.Write((ushort)(address - entry.BaseAddress), value);
     }
 }
