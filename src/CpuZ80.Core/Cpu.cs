@@ -346,7 +346,7 @@ public sealed partial class Cpu
         byte opcode = Fetch();
         
         // Use generator for NOP and ADD A, r
-        if (opcode == 0x00 || (opcode >= 0x80 && opcode <= 0x87))
+        if (IsGenerated(opcode))
         {
             StepGenerated(opcode);
         }
@@ -484,3 +484,4 @@ public sealed partial class Cpu
         }
     }
 }
+
