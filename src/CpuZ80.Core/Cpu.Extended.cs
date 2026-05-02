@@ -11,7 +11,7 @@ public sealed partial class Cpu
     {
         for (int i = 0; i < 256; i++)
         {
-            _edOps[i] = () => { TotalCycles += 8UL; }; // invalid ED opcodes act as NOPs
+            _edOps[i] = () => { Tick(8); }; // invalid ED opcodes act as NOPs
         }
 
         // 16-bit ADC/SBC
@@ -30,30 +30,30 @@ public sealed partial class Cpu
         _edOps[0x6F] = RLD;
 
         // LD dd, (nn) / LD (nn), dd
-        _edOps[0x4B] = () => { BC = ReadWord(FetchWord()); TotalCycles += 20UL; };
-        _edOps[0x5B] = () => { DE = ReadWord(FetchWord()); TotalCycles += 20UL; };
-        _edOps[0x7B] = () => { SP = ReadWord(FetchWord()); TotalCycles += 20UL; };
+        _edOps[0x4B] = () => { BC = ReadWord(FetchWord()); Tick(20); };
+        _edOps[0x5B] = () => { DE = ReadWord(FetchWord()); Tick(20); };
+        _edOps[0x7B] = () => { SP = ReadWord(FetchWord()); Tick(20); };
 
-        _edOps[0x43] = () => { WriteWord(FetchWord(), BC); TotalCycles += 20UL; };
-        _edOps[0x53] = () => { WriteWord(FetchWord(), DE); TotalCycles += 20UL; };
-        _edOps[0x73] = () => { WriteWord(FetchWord(), SP); TotalCycles += 20UL; };
+        _edOps[0x43] = () => { WriteWord(FetchWord(), BC); Tick(20); };
+        _edOps[0x53] = () => { WriteWord(FetchWord(), DE); Tick(20); };
+        _edOps[0x73] = () => { WriteWord(FetchWord(), SP); Tick(20); };
 
         // LD I, A / LD R, A and vice-versa
-        _edOps[0x47] = () => { I = A; TotalCycles += 9UL; };
-        _edOps[0x4F] = () => { R = A; TotalCycles += 9UL; };
-        _edOps[0x57] = () => { A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
-        _edOps[0x5F] = () => { A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; TotalCycles += 9UL; };
+        _edOps[0x47] = () => { I = A; Tick(9); };
+        _edOps[0x4F] = () => { R = A; Tick(9); };
+        _edOps[0x57] = () => { A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; Tick(9); };
+        _edOps[0x5F] = () => { A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; Tick(9); };
 
         // IM x
-        _edOps[0x46] = () => { _interruptMode = 0; TotalCycles += 8UL; };
-        _edOps[0x56] = () => { _interruptMode = 1; TotalCycles += 8UL; };
-        _edOps[0x5E] = () => { _interruptMode = 2; TotalCycles += 8UL; };
+        _edOps[0x46] = () => { _interruptMode = 0; Tick(8); };
+        _edOps[0x56] = () => { _interruptMode = 1; Tick(8); };
+        _edOps[0x5E] = () => { _interruptMode = 2; Tick(8); };
         // IM aliases
-        _edOps[0x4E] = () => { _interruptMode = 0; TotalCycles += 8UL; };
-        _edOps[0x66] = () => { _interruptMode = 0; TotalCycles += 8UL; };
-        _edOps[0x6E] = () => { _interruptMode = 0; TotalCycles += 8UL; };
-        _edOps[0x76] = () => { _interruptMode = 1; TotalCycles += 8UL; };
-        _edOps[0x7E] = () => { _interruptMode = 2; TotalCycles += 8UL; };
+        _edOps[0x4E] = () => { _interruptMode = 0; Tick(8); };
+        _edOps[0x66] = () => { _interruptMode = 0; Tick(8); };
+        _edOps[0x6E] = () => { _interruptMode = 0; Tick(8); };
+        _edOps[0x76] = () => { _interruptMode = 1; Tick(8); };
+        _edOps[0x7E] = () => { _interruptMode = 2; Tick(8); };
 
         // Misc
         _edOps[0x44] = NEG;
@@ -76,8 +76,8 @@ public sealed partial class Cpu
         _edOps[0x7D] = RETN;
 
         // Undocumented LD (nn), HL / LD HL, (nn) duplicates
-        _edOps[0x63] = () => { WriteWord(FetchWord(), HL); TotalCycles += 20UL; };
-        _edOps[0x6B] = () => { HL = ReadWord(FetchWord()); TotalCycles += 20UL; };
+        _edOps[0x63] = () => { WriteWord(FetchWord(), HL); Tick(20); };
+        _edOps[0x6B] = () => { HL = ReadWord(FetchWord()); Tick(20); };
 
         // IN r, (C) / OUT (C), r
         for (int r = 0; r < 8; r++)
@@ -93,13 +93,13 @@ public sealed partial class Cpu
                 FlagPV = GetParity(val);
                 FlagN = false;
                 F = (byte)((F & ~0x28) | (val & 0x28));
-                TotalCycles += 12UL;
+                Tick(12);
             };
             _edOps[0x41 | (reg << 3)] = () =>
             {
                 byte val = reg == 6 ? (byte)0 : GetReg(reg);
                 _ports?.Out(BC, val);
-                TotalCycles += 12UL;
+                Tick(12);
             };
         }
 
@@ -139,7 +139,7 @@ public sealed partial class Cpu
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
         F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
-        TotalCycles += 15UL;
+        Tick(15);
     }
 
     private void DoSbc16(ushort val)
@@ -157,7 +157,7 @@ public sealed partial class Cpu
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
         F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
-        TotalCycles += 15UL;
+        Tick(15);
     }
 
     private void LDI()
@@ -168,7 +168,7 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         FlagPV = BC != 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void LDIR()
@@ -177,7 +177,7 @@ public sealed partial class Cpu
         if (BC != 0)
         {
             PC -= 2; // Repeat LDIR (ED B0)
-            TotalCycles += 5UL; // 21 cycles total when repeating
+            Tick(5); // 21 cycles total when repeating
         }
     }
 
@@ -189,7 +189,7 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         FlagPV = BC != 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void LDDR()
@@ -198,7 +198,7 @@ public sealed partial class Cpu
         if (BC != 0)
         {
             PC -= 2;
-            TotalCycles += 5UL;
+            Tick(5);
         }
     }
 
@@ -212,7 +212,7 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = BC != 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void CPIR()
@@ -221,7 +221,7 @@ public sealed partial class Cpu
         if (BC != 0 && !FlagZ)
         {
             PC -= 2;
-            TotalCycles += 5UL;
+            Tick(5);
         }
     }
 
@@ -235,7 +235,7 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = BC != 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void CPDR()
@@ -244,7 +244,7 @@ public sealed partial class Cpu
         if (BC != 0 && !FlagZ)
         {
             PC -= 2;
-            TotalCycles += 5UL;
+            Tick(5);
         }
     }
 
@@ -259,11 +259,11 @@ public sealed partial class Cpu
         byte val = A;
         A = 0;
         SubInternal(val, false);
-        TotalCycles += 4UL; // (8 total including prefix fetch)
+        Tick(4); // (8 total including prefix fetch)
     }
 
-    private void RETI() { RET(); IFF1 = IFF2; TotalCycles += 4UL; }
-    private void RETN() { RET(); IFF1 = IFF2; TotalCycles += 4UL; }
+    private void RETI() { RET(); IFF1 = IFF2; Tick(4); }
+    private void RETN() { RET(); IFF1 = IFF2; Tick(4); }
 
     private void RRD()
     {
@@ -275,7 +275,7 @@ public sealed partial class Cpu
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);
-        TotalCycles += 14UL; // (18 total)
+        Tick(14); // (18 total)
     }
 
     private void INI()
@@ -285,13 +285,13 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void INIR()
     {
         INI();
-        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+        if (B != 0) { PC -= 2; Tick(5); }
     }
 
     private void IND()
@@ -301,13 +301,13 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void INDR()
     {
         IND();
-        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+        if (B != 0) { PC -= 2; Tick(5); }
     }
 
     private void OUTI()
@@ -317,13 +317,13 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void OTIR()
     {
         OUTI();
-        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+        if (B != 0) { PC -= 2; Tick(5); }
     }
 
     private void OUTD()
@@ -333,13 +333,13 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        TotalCycles += 16UL;
+        Tick(16);
     }
 
     private void OTDR()
     {
         OUTD();
-        if (B != 0) { PC -= 2; TotalCycles += 5UL; }
+        if (B != 0) { PC -= 2; Tick(5); }
     }
 
     private void RLD()
@@ -352,6 +352,7 @@ public sealed partial class Cpu
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);
-        TotalCycles += 14UL; // (18 total)
+        Tick(14); // (18 total)
     }
 }
+

@@ -14,3 +14,4 @@ public sealed class Ram : IBus
     public void Load(ushort baseAddress, byte[] data)
         => Array.Copy(data, 0, _data, baseAddress, data.Length);
 }
+

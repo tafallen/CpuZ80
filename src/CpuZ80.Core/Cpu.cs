@@ -62,6 +62,11 @@ public sealed partial class Cpu
 
     public ulong TotalCycles { get; private set; }
 
+    private void Tick(int count)
+    {
+        TotalCycles += (ulong)count;
+    }
+
     public Cpu(IBus bus, IPortBus? ports = null)
     {
         _bus = bus;
@@ -98,84 +103,84 @@ public sealed partial class Cpu
         _ops[0xED] = HandleED;
         _ops[0xFD] = HandleFD;
         _ops[0xD9] = EXX;
-        _ops[0xEB] = () => { (DE, HL) = (HL, DE); TotalCycles += 4UL; };
-        _ops[0xE3] = () => { ushort tmp = GetReg16(2); SetReg16(2, ReadWord(SP)); WriteWord(SP, tmp); TotalCycles += 19UL; };
+        _ops[0xEB] = () => { (DE, HL) = (HL, DE); Tick(4); };
+        _ops[0xE3] = () => { ushort tmp = GetReg16(2); SetReg16(2, ReadWord(SP)); WriteWord(SP, tmp); Tick(19); };
 
         // Interrupts
-        _ops[0xF3] = () => { IFF1 = IFF2 = false; TotalCycles += 4UL; };
-        _ops[0xFB] = () => { IFF1 = IFF2 = true; _eiDelay = true; TotalCycles += 4UL; };
+        _ops[0xF3] = () => { IFF1 = IFF2 = false; Tick(4); };
+        _ops[0xFB] = () => { IFF1 = IFF2 = true; _eiDelay = true; Tick(4); };
 
         // Misc A
-        _ops[0x27] = () => { DAA(); TotalCycles += 4UL; };
-        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; TotalCycles += 4UL; };
-        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; TotalCycles += 4UL; };
-        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; TotalCycles += 4UL; };
+        _ops[0x27] = () => { DAA(); Tick(4); };
+        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; Tick(4); };
+        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; Tick(4); };
+        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; Tick(4); };
 
         // 8-bit Rotates (Base table)
-        _ops[0x07] = () => { RLCA(); TotalCycles += 4UL; };
-        _ops[0x0F] = () => { RRCA(); TotalCycles += 4UL; };
-        _ops[0x17] = () => { RLA(); TotalCycles += 4UL; };
-        _ops[0x1F] = () => { RRA(); TotalCycles += 4UL; };
+        _ops[0x07] = () => { RLCA(); Tick(4); };
+        _ops[0x0F] = () => { RRCA(); Tick(4); };
+        _ops[0x17] = () => { RLA(); Tick(4); };
+        _ops[0x1F] = () => { RRA(); Tick(4); };
 
         // LD dd, nn
-        _ops[0x01] = () => { SetReg16(0, FetchWord()); TotalCycles += 10UL; };
-        _ops[0x11] = () => { SetReg16(1, FetchWord()); TotalCycles += 10UL; };
-        _ops[0x21] = () => { SetReg16(2, FetchWord()); TotalCycles += 10UL; };
-        _ops[0x31] = () => { SetReg16(3, FetchWord()); TotalCycles += 10UL; };
+        _ops[0x01] = () => { SetReg16(0, FetchWord()); Tick(10); };
+        _ops[0x11] = () => { SetReg16(1, FetchWord()); Tick(10); };
+        _ops[0x21] = () => { SetReg16(2, FetchWord()); Tick(10); };
+        _ops[0x31] = () => { SetReg16(3, FetchWord()); Tick(10); };
 
         // LD (nn), HL and LD HL, (nn)
-        _ops[0x22] = () => { WriteWord(FetchWord(), GetReg16(2)); TotalCycles += 16UL; };
-        _ops[0x2A] = () => { SetReg16(2, ReadWord(FetchWord())); TotalCycles += 16UL; };
+        _ops[0x22] = () => { WriteWord(FetchWord(), GetReg16(2)); Tick(16); };
+        _ops[0x2A] = () => { SetReg16(2, ReadWord(FetchWord())); Tick(16); };
 
         // ADD HL, ss
         _ops[0x09] = () => DoAdd16(GetReg16(0));
         _ops[0x19] = () => DoAdd16(GetReg16(1));
         _ops[0x29] = () => DoAdd16(GetReg16(2));
         _ops[0x39] = () => DoAdd16(GetReg16(3));
-        _ops[0xF9] = () => { SP = GetReg16(2); TotalCycles += 6UL; };
+        _ops[0xF9] = () => { SP = GetReg16(2); Tick(6); };
 
         // INC/DEC 16-bit
-        _ops[0x03] = () => { SetReg16(0, (ushort)(GetReg16(0) + 1)); TotalCycles += 6UL; };
-        _ops[0x13] = () => { SetReg16(1, (ushort)(GetReg16(1) + 1)); TotalCycles += 6UL; };
-        _ops[0x23] = () => { SetReg16(2, (ushort)(GetReg16(2) + 1)); TotalCycles += 6UL; };
-        _ops[0x33] = () => { SetReg16(3, (ushort)(GetReg16(3) + 1)); TotalCycles += 6UL; };
-        _ops[0x0B] = () => { SetReg16(0, (ushort)(GetReg16(0) - 1)); TotalCycles += 6UL; };
-        _ops[0x1B] = () => { SetReg16(1, (ushort)(GetReg16(1) - 1)); TotalCycles += 6UL; };
-        _ops[0x2B] = () => { SetReg16(2, (ushort)(GetReg16(2) - 1)); TotalCycles += 6UL; };
-        _ops[0x3B] = () => { SetReg16(3, (ushort)(GetReg16(3) - 1)); TotalCycles += 6UL; };
+        _ops[0x03] = () => { SetReg16(0, (ushort)(GetReg16(0) + 1)); Tick(6); };
+        _ops[0x13] = () => { SetReg16(1, (ushort)(GetReg16(1) + 1)); Tick(6); };
+        _ops[0x23] = () => { SetReg16(2, (ushort)(GetReg16(2) + 1)); Tick(6); };
+        _ops[0x33] = () => { SetReg16(3, (ushort)(GetReg16(3) + 1)); Tick(6); };
+        _ops[0x0B] = () => { SetReg16(0, (ushort)(GetReg16(0) - 1)); Tick(6); };
+        _ops[0x1B] = () => { SetReg16(1, (ushort)(GetReg16(1) - 1)); Tick(6); };
+        _ops[0x2B] = () => { SetReg16(2, (ushort)(GetReg16(2) - 1)); Tick(6); };
+        _ops[0x3B] = () => { SetReg16(3, (ushort)(GetReg16(3) - 1)); Tick(6); };
 
         // LD A, (nn) / LD (nn), A
-        _ops[0x3A] = () => { A = _bus.Read(FetchWord()); TotalCycles += 13UL; };
-        _ops[0x32] = () => { _bus.Write(FetchWord(), A); TotalCycles += 13UL; };
+        _ops[0x3A] = () => { A = _bus.Read(FetchWord()); Tick(13); };
+        _ops[0x32] = () => { _bus.Write(FetchWord(), A); Tick(13); };
 
         // LD A, (BC/DE)
-        _ops[0x0A] = () => { A = _bus.Read(BC); TotalCycles += 7UL; };
-        _ops[0x1A] = () => { A = _bus.Read(DE); TotalCycles += 7UL; };
-        _ops[0x02] = () => { _bus.Write(BC, A); TotalCycles += 7UL; };
-        _ops[0x12] = () => { _bus.Write(DE, A); TotalCycles += 7UL; };
+        _ops[0x0A] = () => { A = _bus.Read(BC); Tick(7); };
+        _ops[0x1A] = () => { A = _bus.Read(DE); Tick(7); };
+        _ops[0x02] = () => { _bus.Write(BC, A); Tick(7); };
+        _ops[0x12] = () => { _bus.Write(DE, A); Tick(7); };
         
         // LD r, n
-        _ops[0x06] = () => { SetReg(0, Fetch()); TotalCycles += 7UL; };
-        _ops[0x0E] = () => { SetReg(1, Fetch()); TotalCycles += 7UL; };
-        _ops[0x16] = () => { SetReg(2, Fetch()); TotalCycles += 7UL; };
-        _ops[0x1E] = () => { SetReg(3, Fetch()); TotalCycles += 7UL; };
-        _ops[0x26] = () => { SetReg(4, Fetch()); TotalCycles += 7UL; };
-        _ops[0x2E] = () => { SetReg(5, Fetch()); TotalCycles += 7UL; };
-        _ops[0x36] = () => { SetReg(6, Fetch()); TotalCycles += 10UL; };
-        _ops[0x3E] = () => { SetReg(7, Fetch()); TotalCycles += 7UL; };
+        _ops[0x06] = () => { SetReg(0, Fetch()); Tick(7); };
+        _ops[0x0E] = () => { SetReg(1, Fetch()); Tick(7); };
+        _ops[0x16] = () => { SetReg(2, Fetch()); Tick(7); };
+        _ops[0x1E] = () => { SetReg(3, Fetch()); Tick(7); };
+        _ops[0x26] = () => { SetReg(4, Fetch()); Tick(7); };
+        _ops[0x2E] = () => { SetReg(5, Fetch()); Tick(7); };
+        _ops[0x36] = () => { SetReg(6, Fetch()); Tick(10); };
+        _ops[0x3E] = () => { SetReg(7, Fetch()); Tick(7); };
 
         // INC r
         for (int r = 0; r < 8; r++)
         {
             int reg = r;
-            _ops[0x04 | (r << 3)] = () => { SetReg(reg, DoInc(GetReg(reg))); TotalCycles += (reg == 6) ? 11UL : 4UL; };
+            _ops[0x04 | (r << 3)] = () => { SetReg(reg, DoInc(GetReg(reg))); Tick((reg == 6) ? 11 : 4); };
         }
 
         // DEC r
         for (int r = 0; r < 8; r++)
         {
             int reg = r;
-            _ops[0x05 | (r << 3)] = () => { SetReg(reg, DoDec(GetReg(reg))); TotalCycles += (reg == 6) ? 11UL : 4UL; };
+            _ops[0x05 | (r << 3)] = () => { SetReg(reg, DoDec(GetReg(reg))); Tick((reg == 6) ? 11 : 4); };
         }
 
         // LD r, r'
@@ -188,7 +193,7 @@ public sealed partial class Cpu
 
                 int dest = d;
                 int src = s;
-                _ops[opcode] = () => { SetReg(dest, GetReg(src)); TotalCycles += (dest == 6 || src == 6) ? 7UL : 4UL; };
+                _ops[opcode] = () => { SetReg(dest, GetReg(src)); Tick((dest == 6 || src == 6) ? 7 : 4); };
             }
         }
 
@@ -196,71 +201,71 @@ public sealed partial class Cpu
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x80 | s] = () => { DoAdd(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0x80 | s] = () => { DoAdd(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // ADC A, r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x88 | s] = () => { DoAdc(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0x88 | s] = () => { DoAdc(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // SUB r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x90 | s] = () => { DoSub(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0x90 | s] = () => { DoSub(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // SBC A, r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0x98 | s] = () => { DoSbc(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0x98 | s] = () => { DoSbc(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // AND r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xA0 | s] = () => { DoAnd(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0xA0 | s] = () => { DoAnd(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // XOR r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xA8 | s] = () => { DoXor(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0xA8 | s] = () => { DoXor(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // OR r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xB0 | s] = () => { DoOr(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0xB0 | s] = () => { DoOr(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // CP r
         for (int s = 0; s < 8; s++)
         {
             int src = s;
-            _ops[0xB8 | s] = () => { DoCp(GetReg(src)); TotalCycles += (src == 6) ? 7UL : 4UL; };
+            _ops[0xB8 | s] = () => { DoCp(GetReg(src)); Tick((src == 6) ? 7 : 4); };
         }
 
         // Immediate arithmetic
-        _ops[0xC6] = () => { DoAdd(Fetch()); TotalCycles += 7UL; };
-        _ops[0xCE] = () => { DoAdc(Fetch()); TotalCycles += 7UL; };
-        _ops[0xD6] = () => { DoSub(Fetch()); TotalCycles += 7UL; };
-        _ops[0xDE] = () => { DoSbc(Fetch()); TotalCycles += 7UL; };
-        _ops[0xE6] = () => { DoAnd(Fetch()); TotalCycles += 7UL; };
-        _ops[0xEE] = () => { DoXor(Fetch()); TotalCycles += 7UL; };
-        _ops[0xF6] = () => { DoOr(Fetch());  TotalCycles += 7UL; };
-        _ops[0xFE] = () => { DoCp(Fetch());  TotalCycles += 7UL; };
+        _ops[0xC6] = () => { DoAdd(Fetch()); Tick(7); };
+        _ops[0xCE] = () => { DoAdc(Fetch()); Tick(7); };
+        _ops[0xD6] = () => { DoSub(Fetch()); Tick(7); };
+        _ops[0xDE] = () => { DoSbc(Fetch()); Tick(7); };
+        _ops[0xE6] = () => { DoAnd(Fetch()); Tick(7); };
+        _ops[0xEE] = () => { DoXor(Fetch()); Tick(7); };
+        _ops[0xF6] = () => { DoOr(Fetch());  Tick(7); };
+        _ops[0xFE] = () => { DoCp(Fetch());  Tick(7); };
 
         // I/O
-        _ops[0xD3] = () => { _ports?.Out((ushort)((A << 8) | Fetch()), A); TotalCycles += 11UL; };
-        _ops[0xDB] = () => { A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; TotalCycles += 11UL; };
+        _ops[0xD3] = () => { _ports?.Out((ushort)((A << 8) | Fetch()), A); Tick(11); };
+        _ops[0xDB] = () => { A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; Tick(11); };
 
         // Stack instructions
         _ops[0xC5] = PUSH_BC;
@@ -278,15 +283,15 @@ public sealed partial class Cpu
         _ops[0x18] = JR_e;
         _ops[0xCD] = CALL_nn;
         _ops[0xC9] = RET;
-        _ops[0xE9] = () => { PC = GetReg16(2); TotalCycles += 4UL; };
-        _ops[0x76] = () => { _halted = true; PC--; TotalCycles += 4UL; };
+        _ops[0xE9] = () => { PC = GetReg16(2); Tick(4); };
+        _ops[0x76] = () => { _halted = true; PC--; Tick(4); };
         _ops[0x10] = DJNZ;
 
         // RST
         for (int t = 0; t < 8; t++)
         {
             int vec = t;
-            _ops[0xC7 | (vec << 3)] = () => { Push(PC); PC = (ushort)(vec << 3); TotalCycles += 11UL; };
+            _ops[0xC7 | (vec << 3)] = () => { Push(PC); PC = (ushort)(vec << 3); Tick(11); };
         }
 
         for (int cc = 0; cc < 8; cc++)
@@ -303,13 +308,13 @@ public sealed partial class Cpu
         }
     }
 
-    private void NOP() { TotalCycles += 4UL; }
+    private void NOP() { Tick(4); }
 
     private void EX_AF_AF()
     {
         (A, A_) = (A_, A);
         (F, F_) = (F_, F);
-        TotalCycles += 4UL;
+        Tick(4);
     }
 
     private void EXX()
@@ -320,7 +325,7 @@ public sealed partial class Cpu
         (E, E_) = (E_, E);
         (H, H_) = (H_, H);
         (L, L_) = (L_, L);
-        TotalCycles += 4UL;
+        Tick(4);
     }
 
     public void Step()
@@ -341,7 +346,7 @@ public sealed partial class Cpu
             return;
         }
         _eiDelay = false;
-        if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); TotalCycles += 4UL; return; }
+        if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); Tick(4); return; }
         
         byte opcode = Fetch();
         
@@ -394,7 +399,7 @@ public sealed partial class Cpu
                 sbyte d = (sbyte)Fetch();
                 _idxAddr = (ushort)(reg + d);
                 _hasIdxAddr = true;
-                TotalCycles += 8UL;
+                Tick(8);
                 return _bus.Read(_idxAddr);
             }
         }
@@ -463,7 +468,7 @@ public sealed partial class Cpu
                     ushort reg = _indexMode == IndexMode.IX ? _ix : _iy;
                     sbyte d = (sbyte)Fetch();
                     addr = (ushort)(reg + d);
-                    TotalCycles += 8UL;
+                    Tick(8);
                 }
                 _bus.Write(addr, val);
                 return;

@@ -16,20 +16,21 @@ public sealed partial class Cpu
     }
     
     // PUSH ss
-    private void PUSH_BC() { Push(BC); TotalCycles += 11UL; }
-    private void PUSH_DE() { Push(DE); TotalCycles += 11UL; }
-    private void PUSH_HL() { Push(GetReg16(2)); TotalCycles += 11UL; }
-    private void PUSH_AF() { Push((ushort)((A << 8) | F)); TotalCycles += 11UL; }
+    private void PUSH_BC() { Push(BC); Tick(11); }
+    private void PUSH_DE() { Push(DE); Tick(11); }
+    private void PUSH_HL() { Push(GetReg16(2)); Tick(11); }
+    private void PUSH_AF() { Push((ushort)((A << 8) | F)); Tick(11); }
 
     // POP ss
-    private void POP_BC() { BC = Pop(); TotalCycles += 10UL; }
-    private void POP_DE() { DE = Pop(); TotalCycles += 10UL; }
-    private void POP_HL() { SetReg16(2, Pop()); TotalCycles += 10UL; }
+    private void POP_BC() { BC = Pop(); Tick(10); }
+    private void POP_DE() { DE = Pop(); Tick(10); }
+    private void POP_HL() { SetReg16(2, Pop()); Tick(10); }
     private void POP_AF() 
     { 
         ushort val = Pop();
         A = (byte)(val >> 8);
         F = (byte)(val & 0xFF);
-        TotalCycles += 10UL; 
+        Tick(10); 
     }
 }
+

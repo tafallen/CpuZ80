@@ -15,19 +15,19 @@ public sealed partial class Cpu
             if (opcode < 0x40) // Rotates and Shifts
             {
                 int type = (opcode >> 3) & 0x07;
-                _cbOps[opcode] = () => { SetReg(reg, DoShift(type, GetReg(reg))); TotalCycles += (reg == 6) ? 15UL : 8UL; };
+                _cbOps[opcode] = () => { SetReg(reg, DoShift(type, GetReg(reg))); Tick((reg == 6) ? 15 : 8); };
             }
             else if (opcode < 0x80) // BIT
             {
-                _cbOps[opcode] = () => { DoBit(bit, GetReg(reg)); TotalCycles += (reg == 6) ? 12UL : 8UL; };
+                _cbOps[opcode] = () => { DoBit(bit, GetReg(reg)); Tick((reg == 6) ? 12 : 8); };
             }
             else if (opcode < 0xC0) // RES
             {
-                _cbOps[opcode] = () => { SetReg(reg, (byte)(GetReg(reg) & ~(1 << bit))); TotalCycles += (reg == 6) ? 15UL : 8UL; };
+                _cbOps[opcode] = () => { SetReg(reg, (byte)(GetReg(reg) & ~(1 << bit))); Tick((reg == 6) ? 15 : 8); };
             }
             else // SET
             {
-                _cbOps[opcode] = () => { SetReg(reg, (byte)(GetReg(reg) | (1 << bit))); TotalCycles += (reg == 6) ? 15UL : 8UL; };
+                _cbOps[opcode] = () => { SetReg(reg, (byte)(GetReg(reg) | (1 << bit))); Tick((reg == 6) ? 15 : 8); };
             }
         }
     }
@@ -95,3 +95,4 @@ public sealed partial class Cpu
         _cbOps[opcode]();
     }
 }
+

@@ -82,7 +82,7 @@ public sealed partial class Cpu
         ushort result = (ushort)(res & 0xFFFF);
         SetReg16(2, result);
         F = (byte)((F & ~0x28) | ((result >> 8) & 0x28));
-        TotalCycles += 11UL;
+        Tick(11);
     }
 
     private void DoAnd(byte val)
@@ -202,3 +202,4 @@ public sealed partial class Cpu
         F = (byte)((F & ~0x28) | (A & 0x28));
     }
 }
+
