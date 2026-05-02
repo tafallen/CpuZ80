@@ -8,14 +8,14 @@ public sealed partial class Cpu
         IFF1 = false;
         Push(PC);
         PC = 0x0066;
-        TotalCycles += 11UL;
+        Tick(11);
     }
 
     private void AcceptInt()
     {
         IFF1 = false;
         IFF2 = false;
-        TotalCycles += 2UL; // interrupt acknowledge cycles
+        Tick(2); // interrupt acknowledge cycles
 
         switch (_interruptMode)
         {
@@ -26,15 +26,16 @@ public sealed partial class Cpu
             case 1:
                 Push(PC);
                 PC = 0x0038;
-                TotalCycles += 11UL;
+                Tick(11);
                 break;
             case 2:
                 ushort vectorAddr = (ushort)((I << 8) | _intDataBus);
                 ushort dest = ReadWord(vectorAddr);
                 Push(PC);
                 PC = dest;
-                TotalCycles += 17UL;
+                Tick(17);
                 break;
         }
     }
 }
+

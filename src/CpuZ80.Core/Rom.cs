@@ -10,3 +10,4 @@ public sealed class Rom : IBus
 
     public void Write(ushort address, byte value) { }
 }
+

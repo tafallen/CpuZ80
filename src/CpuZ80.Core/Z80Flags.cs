@@ -13,3 +13,4 @@ public enum Z80Flags : byte
     Zero = 1 << 6,          // Z
     Sign = 1 << 7           // S
 }
+

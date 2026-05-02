@@ -50,3 +50,4 @@ public sealed class AddressDecoder : IBus
         entry.Device?.Write((ushort)(address - entry.BaseAddress), value);
     }
 }
+

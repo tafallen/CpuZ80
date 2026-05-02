@@ -14,18 +14,18 @@ public sealed partial class Cpu
             sbyte d = (sbyte)Fetch();
             byte n = Fetch();
             _bus.Write((ushort)(_ix + d), n);
-            TotalCycles += 15UL; // 19 total (prefix adds 4 below)
+            Tick(15); // 19 total (prefix adds 4 below)
         }
         else if (opcode == 0xE9) // JP (IX)
         {
             PC = _ix;
-            TotalCycles += 4UL;
+            Tick(4);
         }
         else
             _ops[opcode]();
         _indexMode = IndexMode.HL;
         _hasIdxAddr = false;
-        TotalCycles += 4UL;
+        Tick(4);
     }
 
     private void HandleFD()
@@ -40,18 +40,18 @@ public sealed partial class Cpu
             sbyte d = (sbyte)Fetch();
             byte n = Fetch();
             _bus.Write((ushort)(_iy + d), n);
-            TotalCycles += 15UL;
+            Tick(15);
         }
         else if (opcode == 0xE9) // JP (IY)
         {
             PC = _iy;
-            TotalCycles += 4UL;
+            Tick(4);
         }
         else
             _ops[opcode]();
         _indexMode = IndexMode.HL;
         _hasIdxAddr = false;
-        TotalCycles += 4UL;
+        Tick(4);
     }
 
     private void HandleIndexedBitwise()
@@ -69,26 +69,26 @@ public sealed partial class Cpu
             val = DoShift((opcode >> 3) & 0x07, val);
             _bus.Write(addr, val);
             if (r != 6) SetReg(r, val);
-            TotalCycles = TotalCycles - 4UL + 23UL;
+            Tick(-4); Tick(23);
         }
         else if (opcode < 0x80) // BIT
         {
             DoBit(bit, val);
-            TotalCycles = TotalCycles - 4UL + 20UL;
+            Tick(-4); Tick(20);
         }
         else if (opcode < 0xC0) // RES
         {
             val = (byte)(val & ~(1 << bit));
             _bus.Write(addr, val);
             if (r != 6) SetReg(r, val);
-            TotalCycles = TotalCycles - 4UL + 23UL;
+            Tick(-4); Tick(23);
         }
         else // SET
         {
             val = (byte)(val | (1 << bit));
             _bus.Write(addr, val);
             if (r != 6) SetReg(r, val);
-            TotalCycles = TotalCycles - 4UL + 23UL;
+            Tick(-4); Tick(23);
         }
     }
 
@@ -103,7 +103,7 @@ public sealed partial class Cpu
         FlagC = (res & 0x10000) != 0;
         reg = (ushort)(res & 0xFFFF);
         F = (byte)((F & ~0x28) | ((reg >> 8) & 0x28));
-        TotalCycles += 11UL; 
+        Tick(11);
     }
 
     private void ExecuteArithmetic(byte opcode, byte val)
@@ -111,14 +111,15 @@ public sealed partial class Cpu
         int type = (opcode >> 3) & 0x07;
         switch (type)
         {
-            case 0: AddInternal(val, false); TotalCycles -= 4UL; break;
-            case 1: AddInternal(val, true);  TotalCycles -= 4UL; break;
-            case 2: SubInternal(val, false); TotalCycles -= 4UL; break;
-            case 3: SubInternal(val, true);  TotalCycles -= 4UL; break;
+            case 0: AddInternal(val, false); Tick(-4); break;
+            case 1: AddInternal(val, true);  Tick(-4); break;
+            case 2: SubInternal(val, false); Tick(-4); break;
+            case 3: SubInternal(val, true);  Tick(-4); break;
             case 4: A &= val; SetLogicFlags(A); break;
             case 5: A ^= val; SetLogicFlags(A); break;
             case 6: A |= val; SetLogicFlags(A); break;
-            case 7: byte oldA = A; SubInternal(val, false); TotalCycles -= 4UL; A = oldA; break;
+            case 7: byte oldA = A; SubInternal(val, false); Tick(-4); A = oldA; break;
         }
     }
 }
+

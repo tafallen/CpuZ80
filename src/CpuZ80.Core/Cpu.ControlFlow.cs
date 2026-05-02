@@ -15,20 +15,20 @@ public sealed partial class Cpu
         _ => throw new ArgumentOutOfRangeException(nameof(cc))
     };
 
-    private void JP_nn() { PC = FetchWord(); TotalCycles += 10UL; }
+    private void JP_nn() { PC = FetchWord(); Tick(10); }
     
     private void JP_cc_nn(int cc)
     {
         ushort addr = FetchWord();
         if (CheckCondition(cc)) PC = addr;
-        TotalCycles += 10UL;
+        Tick(10);
     }
 
     private void JR_e()
     {
         sbyte offset = (sbyte)Fetch();
         PC = (ushort)(PC + offset);
-        TotalCycles += 12UL;
+        Tick(12);
     }
 
     private void JR_cc_e(int cc)
@@ -37,11 +37,11 @@ public sealed partial class Cpu
         if (CheckCondition(cc))
         {
             PC = (ushort)(PC + offset);
-            TotalCycles += 12UL;
+            Tick(12);
         }
         else
         {
-            TotalCycles += 7UL;
+            Tick(7);
         }
     }
 
@@ -50,7 +50,7 @@ public sealed partial class Cpu
         ushort addr = FetchWord();
         Push(PC);
         PC = addr;
-        TotalCycles += 17UL;
+        Tick(17);
     }
 
     private void CALL_cc_nn(int cc)
@@ -60,15 +60,15 @@ public sealed partial class Cpu
         {
             Push(PC);
             PC = addr;
-            TotalCycles += 17UL;
+            Tick(17);
         }
         else
         {
-            TotalCycles += 10UL;
+            Tick(10);
         }
     }
 
-    private void RET() { PC = Pop(); TotalCycles += 10UL; }
+    private void RET() { PC = Pop(); Tick(10); }
 
     private void DJNZ()
     {
@@ -76,11 +76,11 @@ public sealed partial class Cpu
         if (--B != 0)
         {
             PC = (ushort)(PC + offset);
-            TotalCycles += 13UL;
+            Tick(13);
         }
         else
         {
-            TotalCycles += 8UL;
+            Tick(8);
         }
     }
 
@@ -89,11 +89,12 @@ public sealed partial class Cpu
         if (CheckCondition(cc))
         {
             PC = Pop();
-            TotalCycles += 11UL;
+            Tick(11);
         }
         else
         {
-            TotalCycles += 5UL;
+            Tick(5);
         }
     }
 }
+
