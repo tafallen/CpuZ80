@@ -342,8 +342,18 @@ public sealed partial class Cpu
         }
         _eiDelay = false;
         if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); TotalCycles += 4UL; return; }
+        
         byte opcode = Fetch();
-        _ops[opcode]();
+        
+        // Use generator for NOP as a test, fallback to delegate array for rest
+        if (opcode == 0x00)
+        {
+            StepGenerated(opcode);
+        }
+        else
+        {
+            _ops[opcode]();
+        }
     }
 
     private byte Fetch()
