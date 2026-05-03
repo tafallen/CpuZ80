@@ -59,6 +59,7 @@ public sealed partial class Cpu
 
     public ushort PC { get; internal set; }
     public ushort SP { get; internal set; }
+    public ushort WZ; // Internal temporary register (MEMPTR)
 
     public ulong TotalCycles { get; private set; }
 
@@ -87,6 +88,7 @@ public sealed partial class Cpu
         _intPending = false;
         _eiDelay    = false;
         _indexMode  = IndexMode.HL;
+        WZ          = 0;
     }
 
     private void BuildDispatchTable()
