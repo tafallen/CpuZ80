@@ -2,7 +2,7 @@ using System.Text;
 
 namespace CpuZ80.CodeGen;
 
-public record Instruction(byte Opcode, string Mnemonic, string Action, int[] Cycles);
+public record Instruction(byte Opcode, string Mnemonic, string Action, int[] Cycles, string? WzAction = null);
 
 class Program
 {
@@ -272,9 +272,9 @@ class Program
         sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ ");
         
         if (inst.Cycles.Length == 0) {
-            sb.AppendLine($"{inst.Action}; break;");
+            sb.Append($"{inst.Action}; ");
         } else if (inst.Cycles.Length == 1) {
-            sb.AppendLine($"Tick({inst.Cycles[0]}); {inst.Action}; break;");
+            sb.Append($"Tick({inst.Cycles[0]}); {inst.Action}; ");
         } else {
             // Split action and interleave. For Task 2, we just interleave sequentially before the action
             // but the design spec wants interleaving. 
@@ -284,7 +284,11 @@ class Program
             for (int i = 1; i < inst.Cycles.Length; i++) {
                 sb.Append($"Tick({inst.Cycles[i]}); ");
             }
-            sb.AppendLine("break;");
         }
+
+        if (!string.IsNullOrEmpty(inst.WzAction)) {
+            sb.Append($"{inst.WzAction}; ");
+        }
+        sb.AppendLine("break;");
     }
 }
