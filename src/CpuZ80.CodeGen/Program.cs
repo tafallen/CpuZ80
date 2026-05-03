@@ -29,12 +29,12 @@ class Program
 
         baseInstructions.Add(new Instruction(0x02, "LD (BC), A", "_bus.Write(BC, A)", new[] { 4, 3 }));
         baseInstructions.Add(new Instruction(0x12, "LD (DE), A", "_bus.Write(DE, A)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", "A = _bus.Read(BC)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", "A = _bus.Read(DE)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", "WriteWord(FetchWord(), HL)", new[] { 4, 3, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", "HL = ReadWord(FetchWord())", new[] { 4, 3, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", "_bus.Write(FetchWord(), A)", new[] { 4, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", "A = _bus.Read(FetchWord())", new[] { 4, 3, 3, 3 }));
+        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", "A = _bus.Read(BC)", new[] { 4, 3 }, "WZ = (ushort)(BC + 1)"));
+        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", "A = _bus.Read(DE)", new[] { 4, 3 }, "WZ = (ushort)(DE + 1)"));
+        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", "ushort nn = FetchWord(); WriteWord(nn, HL)", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
+        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", "ushort nn = FetchWord(); HL = ReadWord(nn)", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
+        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", "ushort nn = FetchWord(); _bus.Write(nn, A)", new[] { 4, 3, 3, 3 }, "WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF))"));
+        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", "ushort nn = FetchWord(); A = _bus.Read(nn)", new[] { 4, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
 
         for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"DoAdd16({dd[i]})", new int[0])); // DoAdd16 calls Tick
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x04 | (i << 3)), $"INC {regs[i]}", string.Format(regSetters[i], $"DoInc({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
@@ -107,7 +107,8 @@ class Program
 
         for (int bit = 0; bit < 8; bit++)
             for (int s = 0; s < 8; s++) {
-                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", $"DoBit({bit}, {regs[s]})", (s == 6 ? new[] { 4, 4, 4 } : new[] { 4, 4 })));
+                string action = (s == 6) ? $"{{ byte val = GetReg(6); WZ = (_indexMode == IndexMode.HL) ? HL : _idxAddr; DoBit({bit}, val); SetUndocumentedFlagsFromWZ(); }}" : $"DoBit({bit}, {regs[s]})";
+                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", action, (s == 6 ? new[] { 4, 4, 4 } : new[] { 4, 4 })));
                 cbInstructions.Add(new Instruction((byte)(0x80 | (bit << 3) | s), $"RES {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} & ~(1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
                 cbInstructions.Add(new Instruction((byte)(0xC0 | (bit << 3) | s), $"SET {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} | (1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
             }
@@ -269,7 +270,7 @@ class Program
     }
 
     static void GenerateCase(StringBuilder sb, Instruction inst) {
-        sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ ");
+        sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ {{ ");
         
         if (inst.Cycles.Length == 0) {
             sb.Append($"{inst.Action}; ");
@@ -289,6 +290,6 @@ class Program
         if (!string.IsNullOrEmpty(inst.WzAction)) {
             sb.Append($"{inst.WzAction}; ");
         }
-        sb.AppendLine("break;");
+        sb.AppendLine("} break;");
     }
 }
