@@ -57,6 +57,8 @@ public sealed partial class Cpu
     public ushort DE { get => (ushort)((D << 8) | E); set { D = (byte)(value >> 8); E = (byte)value; } }
     public ushort HL { get => (ushort)((H << 8) | L); set { H = (byte)(value >> 8); L = (byte)value; } }
 
+    public ushort WZ;
+
     public ushort PC { get; internal set; }
     public ushort SP { get; internal set; }
 
@@ -87,6 +89,7 @@ public sealed partial class Cpu
         _intPending = false;
         _eiDelay    = false;
         _indexMode  = IndexMode.HL;
+        WZ          = 0;
     }
 
     private void BuildDispatchTable()

@@ -120,6 +120,12 @@ public sealed partial class Cpu
         F = (byte)((F & ~0x28) | (val & 0x28)); // X/Y flags come from operand, not result
     }
 
+    internal void SetUndocumentedFlagsFromWZ()
+    {
+        // Bits 11 and 13 of WZ leak into bits 3 and 5 of F
+        F = (byte)((F & ~0x28) | ((WZ >> 8) & 0x28));
+    }
+
     private void SetLogicFlags(byte res)
     {
         FlagZ = res == 0;
