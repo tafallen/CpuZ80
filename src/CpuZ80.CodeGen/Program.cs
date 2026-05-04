@@ -29,12 +29,12 @@ class Program
 
         baseInstructions.Add(new Instruction(0x02, "LD (BC), A", "_bus.Write(BC, A)", new[] { 4, 3 }));
         baseInstructions.Add(new Instruction(0x12, "LD (DE), A", "_bus.Write(DE, A)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", "A = _bus.Read(BC)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", "A = _bus.Read(DE)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", "WriteWord(FetchWord(), HL)", new[] { 4, 3, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", "HL = ReadWord(FetchWord())", new[] { 4, 3, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", "_bus.Write(FetchWord(), A)", new[] { 4, 3, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", "A = _bus.Read(FetchWord())", new[] { 4, 3, 3, 3 }));
+        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", "A = _bus.Read(BC)", new[] { 4, 3 }, "WZ = (ushort)(BC + 1)"));
+        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", "A = _bus.Read(DE)", new[] { 4, 3 }, "WZ = (ushort)(DE + 1)"));
+        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", "{ ushort nn = FetchWord(); WriteWord(nn, HL); }", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
+        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", "{ ushort nn = FetchWord(); HL = ReadWord(nn); }", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
+        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", "{ ushort nn = FetchWord(); _bus.Write(nn, A); }", new[] { 4, 3, 3, 3 }, "WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF))"));
+        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", "{ ushort nn = FetchWord(); A = _bus.Read(nn); }", new[] { 4, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
 
         for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"DoAdd16({dd[i]})", new int[0])); // DoAdd16 calls Tick
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x04 | (i << 3)), $"INC {regs[i]}", string.Format(regSetters[i], $"DoInc({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
@@ -107,7 +107,9 @@ class Program
 
         for (int bit = 0; bit < 8; bit++)
             for (int s = 0; s < 8; s++) {
-                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", $"DoBit({bit}, {regs[s]})", (s == 6 ? new[] { 4, 4, 4 } : new[] { 4, 4 })));
+                string bitAction = $"DoBit({bit}, {regs[s]})";
+                if (s == 6) bitAction += "; SetUndocumentedFlagsFromWZ()";
+                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", bitAction, (s == 6 ? new[] { 4, 4, 4 } : new[] { 4, 4 })));
                 cbInstructions.Add(new Instruction((byte)(0x80 | (bit << 3) | s), $"RES {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} & ~(1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
                 cbInstructions.Add(new Instruction((byte)(0xC0 | (bit << 3) | s), $"SET {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} | (1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
             }
@@ -271,18 +273,28 @@ class Program
     static void GenerateCase(StringBuilder sb, Instruction inst) {
         sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ ");
         
+        string action = inst.Action;
+        string? wzAction = inst.WzAction;
+
+        if (!string.IsNullOrEmpty(wzAction)) {
+            if (action.StartsWith("{") && action.EndsWith("}")) {
+                action = action.Substring(0, action.Length - 1) + " " + wzAction + "; }";
+                wzAction = null;
+            }
+        }
+
         if (inst.Cycles.Length == 0) {
-            sb.Append($"{inst.Action}; ");
-            if (!string.IsNullOrEmpty(inst.WzAction)) sb.Append($"{inst.WzAction}; ");
+            sb.Append($"{action}; ");
+            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
             sb.AppendLine("break;");
         } else if (inst.Cycles.Length == 1) {
-            sb.Append($"Tick({inst.Cycles[0]}); {inst.Action}; ");
-            if (!string.IsNullOrEmpty(inst.WzAction)) sb.Append($"{inst.WzAction}; ");
+            sb.Append($"Tick({inst.Cycles[0]}); {action}; ");
+            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
             sb.AppendLine("break;");
         } else {
             sb.Append($"Tick({inst.Cycles[0]}); ");
-            sb.Append($"{inst.Action}; ");
-            if (!string.IsNullOrEmpty(inst.WzAction)) sb.Append($"{inst.WzAction}; ");
+            sb.Append($"{action}; ");
+            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
             for (int i = 1; i < inst.Cycles.Length; i++) {
                 sb.Append($"Tick({inst.Cycles[i]}); ");
             }
