@@ -146,4 +146,25 @@ public class BitwiseTests : CpuFixture
         Assert.Equal(0x01, Cpu.B); // Bit 0 becomes 1
         Assert.True(Cpu.FlagC);
     }
+
+    [Fact]
+    public void BIT_HL_ptr_UndocumentedFlags_LeakFromHL()
+    {
+        // For BIT n, (HL), bits 3 and 5 of flags are leaked from bits 11 and 13 of WZ (which is HL)
+        Cpu.HL = 0x2800; // Bits 11 and 13 set
+        Ram.Write(0x2800, 0x00);
+        Load(0x0000, 0xCB, 0x46); // BIT 0, (HL)
+        
+        Step();
+        
+        // Flag bit 3 (value 8) and bit 5 (value 32) should be set because of WZ=0x2800
+        Assert.Equal(0x28, Cpu.F & 0x28);
+        
+        Cpu.HL = 0x0000;
+        Ram.Write(0x0000, 0x00);
+        Load(0x1000, 0xCB, 0x46); // BIT 0, (HL)
+        Cpu.PC = 0x1000;
+        Step();
+        Assert.Equal(0x00, Cpu.F & 0x28);
+    }
 }

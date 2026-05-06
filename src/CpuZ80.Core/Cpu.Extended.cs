@@ -168,6 +168,11 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         FlagPV = BC != 0;
+
+        // Undocumented flags: Bit 5 = (A+val) bit 1, Bit 3 = (A+val) bit 3
+        byte res = (byte)(A + val);
+        F = (byte)((F & ~0x28) | (res & 0x08) | ((res << 4) & 0x20));
+        
         Tick(16);
     }
 
@@ -189,6 +194,11 @@ public sealed partial class Cpu
         FlagN = false;
         FlagH = false;
         FlagPV = BC != 0;
+
+        // Undocumented flags
+        byte res = (byte)(A + val);
+        F = (byte)((F & ~0x28) | (res & 0x08) | ((res << 4) & 0x20));
+
         Tick(16);
     }
 
@@ -212,6 +222,11 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = BC != 0;
+
+        // Undocumented flags
+        byte res2 = (byte)(res - (FlagH ? 1 : 0));
+        F = (byte)((F & ~0x28) | (res2 & 0x08) | ((res2 << 4) & 0x20));
+
         Tick(16);
     }
 
@@ -235,6 +250,11 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = BC != 0;
+
+        // Undocumented flags
+        byte res2 = (byte)(res - (FlagH ? 1 : 0));
+        F = (byte)((F & ~0x28) | (res2 & 0x08) | ((res2 << 4) & 0x20));
+
         Tick(16);
     }
 

@@ -54,4 +54,18 @@ public class MiscTests : CpuFixture
         Assert.Equal(0x3344, Cpu.DE);
         Assert.Equal(0x5566, Cpu.HL);
     }
+
+    [Fact]
+    public void SetUndocumentedFlagsFromWZ_SetsCorrectBits()
+    {
+        Cpu.WZ = 0x2800; // Bits 11 and 13 set
+        Cpu.F = 0x00;
+        Cpu.SetUndocumentedFlagsFromWZ();
+        Assert.Equal(0x28, Cpu.F);
+
+        Cpu.WZ = 0xD7FF; // Bits 11 and 13 clear
+        Cpu.F = 0xFF;
+        Cpu.SetUndocumentedFlagsFromWZ();
+        Assert.Equal(0xD7, Cpu.F); // 0xFF & ~0x28
+    }
 }
