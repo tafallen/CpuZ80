@@ -51,6 +51,11 @@ public class ExtendedTests : CpuFixture
         Assert.True(Cpu.FlagPV); // BC != 0
         Assert.False(Cpu.FlagN);
         Assert.False(Cpu.FlagH);
+        
+        // Undocumented flags: res = A + val = 0x00 + 0xAA = 0xAA
+        // Bit 3 of res is 1 (0x08), Bit 1 of res is 1 (0x02).
+        // F bit 3 = res bit 3 = 1. F bit 5 = res bit 1 = 1.
+        Assert.Equal(0x28, Cpu.F & 0x28);
     }
 
     [Fact]

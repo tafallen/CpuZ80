@@ -26,7 +26,7 @@ public sealed partial class Cpu
             case 0x0D: /* DEC C */ Tick(4); C = DoDec(C); break;
             case 0x0E: /* LD C, n */ Tick(4); C = Fetch(); Tick(3); break;
             case 0x0F: /* RRCA */ Tick(4); RRCA(); break;
-            case 0x10: /* DJNZ e */ Tick(4); { sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); Tick(5); } }; Tick(4); break;
+            case 0x10: /* DJNZ e */ Tick(4); { sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); WZ = PC; Tick(5); } }; Tick(4); break;
             case 0x11: /* LD DE, nn */ Tick(4); DE = FetchWord(); Tick(3); Tick(3); break;
             case 0x12: /* LD (DE), A */ Tick(4); _bus.Write(DE, A); Tick(3); break;
             case 0x13: /* INC DE */ Tick(6); DE++; break;
@@ -220,7 +220,7 @@ public sealed partial class Cpu
             case 0xD0: /* RET NC */ Tick(5); if (!FlagC) { PC = Pop(); Tick(6); }; break;
             case 0xD1: /* POP DE */ Tick(4); DE = Pop(); Tick(3); Tick(3); break;
             case 0xD2: /* JP NC, nn */ Tick(4); { ushort nn = FetchWord(); if (!FlagC) PC = nn; }; Tick(3); Tick(3); break;
-            case 0xD3: /* OUT (n), A */ Tick(4); { _ports?.Out((ushort)((A << 8) | Fetch()), A); }; Tick(3); Tick(4); break;
+            case 0xD3: /* OUT (n), A */ Tick(4); { byte n = Fetch(); _ports?.Out((ushort)((A << 8) | n), A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }; Tick(3); Tick(4); break;
             case 0xD4: /* CALL NC, nn */ Tick(4); { ushort nn = FetchWord(); if (!FlagC) { Push(PC); PC = nn; Tick(7); } }; Tick(3); Tick(3); break;
             case 0xD5: /* PUSH DE */ Tick(4); Push((ushort)DE); Tick(3); Tick(4); break;
             case 0xD6: /* SUB n */ Tick(4); DoSub(Fetch()); Tick(3); break;
@@ -228,7 +228,7 @@ public sealed partial class Cpu
             case 0xD8: /* RET C */ Tick(5); if (FlagC) { PC = Pop(); Tick(6); }; break;
             case 0xD9: /* EXX */ EXX(); break;
             case 0xDA: /* JP C, nn */ Tick(4); { ushort nn = FetchWord(); if (FlagC) PC = nn; }; Tick(3); Tick(3); break;
-            case 0xDB: /* IN A, (n) */ Tick(4); { A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; }; Tick(3); Tick(4); break;
+            case 0xDB: /* IN A, (n) */ Tick(4); { byte n = Fetch(); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); }; Tick(3); Tick(4); break;
             case 0xDC: /* CALL C, nn */ Tick(4); { ushort nn = FetchWord(); if (FlagC) { Push(PC); PC = nn; Tick(7); } }; Tick(3); Tick(3); break;
             case 0xDE: /* SBC A, n */ Tick(4); DoSbc(Fetch()); Tick(3); break;
             case 0xDF: /* RST 18h */ Tick(4); { Push(PC); PC = 0x18; }; Tick(3); Tick(4); break;
@@ -345,7 +345,7 @@ public sealed partial class Cpu
             case 0x43: /* BIT 0, E */ Tick(4); DoBit(0, E); Tick(4); break;
             case 0x44: /* BIT 0, H */ Tick(4); DoBit(0, H); Tick(4); break;
             case 0x45: /* BIT 0, L */ Tick(4); DoBit(0, L); Tick(4); break;
-            case 0x46: /* BIT 0, _bus.Read(HL) */ Tick(4); DoBit(0, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x46: /* BIT 0, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(0, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x47: /* BIT 0, A */ Tick(4); DoBit(0, A); Tick(4); break;
             case 0x48: /* BIT 1, B */ Tick(4); DoBit(1, B); Tick(4); break;
             case 0x49: /* BIT 1, C */ Tick(4); DoBit(1, C); Tick(4); break;
@@ -353,7 +353,7 @@ public sealed partial class Cpu
             case 0x4B: /* BIT 1, E */ Tick(4); DoBit(1, E); Tick(4); break;
             case 0x4C: /* BIT 1, H */ Tick(4); DoBit(1, H); Tick(4); break;
             case 0x4D: /* BIT 1, L */ Tick(4); DoBit(1, L); Tick(4); break;
-            case 0x4E: /* BIT 1, _bus.Read(HL) */ Tick(4); DoBit(1, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x4E: /* BIT 1, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(1, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x4F: /* BIT 1, A */ Tick(4); DoBit(1, A); Tick(4); break;
             case 0x50: /* BIT 2, B */ Tick(4); DoBit(2, B); Tick(4); break;
             case 0x51: /* BIT 2, C */ Tick(4); DoBit(2, C); Tick(4); break;
@@ -361,7 +361,7 @@ public sealed partial class Cpu
             case 0x53: /* BIT 2, E */ Tick(4); DoBit(2, E); Tick(4); break;
             case 0x54: /* BIT 2, H */ Tick(4); DoBit(2, H); Tick(4); break;
             case 0x55: /* BIT 2, L */ Tick(4); DoBit(2, L); Tick(4); break;
-            case 0x56: /* BIT 2, _bus.Read(HL) */ Tick(4); DoBit(2, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x56: /* BIT 2, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(2, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x57: /* BIT 2, A */ Tick(4); DoBit(2, A); Tick(4); break;
             case 0x58: /* BIT 3, B */ Tick(4); DoBit(3, B); Tick(4); break;
             case 0x59: /* BIT 3, C */ Tick(4); DoBit(3, C); Tick(4); break;
@@ -369,7 +369,7 @@ public sealed partial class Cpu
             case 0x5B: /* BIT 3, E */ Tick(4); DoBit(3, E); Tick(4); break;
             case 0x5C: /* BIT 3, H */ Tick(4); DoBit(3, H); Tick(4); break;
             case 0x5D: /* BIT 3, L */ Tick(4); DoBit(3, L); Tick(4); break;
-            case 0x5E: /* BIT 3, _bus.Read(HL) */ Tick(4); DoBit(3, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x5E: /* BIT 3, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(3, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x5F: /* BIT 3, A */ Tick(4); DoBit(3, A); Tick(4); break;
             case 0x60: /* BIT 4, B */ Tick(4); DoBit(4, B); Tick(4); break;
             case 0x61: /* BIT 4, C */ Tick(4); DoBit(4, C); Tick(4); break;
@@ -377,7 +377,7 @@ public sealed partial class Cpu
             case 0x63: /* BIT 4, E */ Tick(4); DoBit(4, E); Tick(4); break;
             case 0x64: /* BIT 4, H */ Tick(4); DoBit(4, H); Tick(4); break;
             case 0x65: /* BIT 4, L */ Tick(4); DoBit(4, L); Tick(4); break;
-            case 0x66: /* BIT 4, _bus.Read(HL) */ Tick(4); DoBit(4, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x66: /* BIT 4, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(4, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x67: /* BIT 4, A */ Tick(4); DoBit(4, A); Tick(4); break;
             case 0x68: /* BIT 5, B */ Tick(4); DoBit(5, B); Tick(4); break;
             case 0x69: /* BIT 5, C */ Tick(4); DoBit(5, C); Tick(4); break;
@@ -385,7 +385,7 @@ public sealed partial class Cpu
             case 0x6B: /* BIT 5, E */ Tick(4); DoBit(5, E); Tick(4); break;
             case 0x6C: /* BIT 5, H */ Tick(4); DoBit(5, H); Tick(4); break;
             case 0x6D: /* BIT 5, L */ Tick(4); DoBit(5, L); Tick(4); break;
-            case 0x6E: /* BIT 5, _bus.Read(HL) */ Tick(4); DoBit(5, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x6E: /* BIT 5, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(5, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x6F: /* BIT 5, A */ Tick(4); DoBit(5, A); Tick(4); break;
             case 0x70: /* BIT 6, B */ Tick(4); DoBit(6, B); Tick(4); break;
             case 0x71: /* BIT 6, C */ Tick(4); DoBit(6, C); Tick(4); break;
@@ -393,7 +393,7 @@ public sealed partial class Cpu
             case 0x73: /* BIT 6, E */ Tick(4); DoBit(6, E); Tick(4); break;
             case 0x74: /* BIT 6, H */ Tick(4); DoBit(6, H); Tick(4); break;
             case 0x75: /* BIT 6, L */ Tick(4); DoBit(6, L); Tick(4); break;
-            case 0x76: /* BIT 6, _bus.Read(HL) */ Tick(4); DoBit(6, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x76: /* BIT 6, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(6, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x77: /* BIT 6, A */ Tick(4); DoBit(6, A); Tick(4); break;
             case 0x78: /* BIT 7, B */ Tick(4); DoBit(7, B); Tick(4); break;
             case 0x79: /* BIT 7, C */ Tick(4); DoBit(7, C); Tick(4); break;
@@ -401,7 +401,7 @@ public sealed partial class Cpu
             case 0x7B: /* BIT 7, E */ Tick(4); DoBit(7, E); Tick(4); break;
             case 0x7C: /* BIT 7, H */ Tick(4); DoBit(7, H); Tick(4); break;
             case 0x7D: /* BIT 7, L */ Tick(4); DoBit(7, L); Tick(4); break;
-            case 0x7E: /* BIT 7, _bus.Read(HL) */ Tick(4); DoBit(7, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); Tick(4); Tick(4); break;
+            case 0x7E: /* BIT 7, _bus.Read(HL) */ Tick(4); { WZ = HL; DoBit(7, _bus.Read(HL)); SetUndocumentedFlagsFromWZ(); }; Tick(4); Tick(4); break;
             case 0x7F: /* BIT 7, A */ Tick(4); DoBit(7, A); Tick(4); break;
             case 0x80: /* RES 0, B */ Tick(4); B =  (byte)(B & ~(1 << 0)); Tick(4); break;
             case 0x81: /* RES 0, C */ Tick(4); C =  (byte)(C & ~(1 << 0)); Tick(4); break;
@@ -579,7 +579,7 @@ public sealed partial class Cpu
             case 0x64: /* NEG */ NEG(); break;
             case 0x65: /* RETN */ RETN(); break;
             case 0x66: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
-            case 0x67: /* RRD */ RRD(); break;
+            case 0x67: /* RRD */ { RRD(); WZ = (ushort)(HL + 1); }; break;
             case 0x68: /* IN L, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (5 != 6) L = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
             case 0x69: /* OUT (C), L */ Tick(4); { byte val = L; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x6A: /* ADC HL, HL */ DoAdc16(HL); break;
@@ -587,7 +587,7 @@ public sealed partial class Cpu
             case 0x6C: /* NEG */ NEG(); break;
             case 0x6D: /* RETN */ RETN(); break;
             case 0x6E: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
-            case 0x6F: /* RLD */ RLD(); break;
+            case 0x6F: /* RLD */ { RLD(); WZ = (ushort)(HL + 1); }; break;
             case 0x70: /* IN _bus.Read(HL), (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (6 != 6) SetReg(6, val); FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
             case 0x71: /* OUT (C), _bus.Read(HL) */ Tick(4); { byte val = (byte)0; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x72: /* SBC HL, SP */ DoSbc16(SP); break;

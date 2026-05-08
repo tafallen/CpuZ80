@@ -81,6 +81,7 @@ public sealed partial class Cpu
 
         ushort result = (ushort)(res & 0xFFFF);
         SetReg16(2, result);
+        WZ = (ushort)(cur + 1);
         F = (byte)((F & ~0x28) | ((result >> 8) & 0x28));
         Tick(11);
     }
@@ -206,6 +207,12 @@ public sealed partial class Cpu
         FlagS = (A & 0x80) != 0;
         FlagPV = GetParity(A);
         F = (byte)((F & ~0x28) | (A & 0x28));
+    }
+
+    internal void SetUndocumentedFlagsFromWZ()
+    {
+        // Bits 3 and 5 of F are taken from bits 11 and 13 of WZ (high byte bits 3 and 5)
+        F = (byte)((F & ~0x28) | ((WZ >> 8) & 0x28));
     }
 }
 

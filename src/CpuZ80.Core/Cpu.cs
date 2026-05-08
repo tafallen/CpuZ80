@@ -25,11 +25,12 @@ public sealed partial class Cpu
     private ushort _ix, _iy;
     private ushort _idxAddr;
     private bool _hasIdxAddr;
+    private bool _evaluatingHlPtr; 
 
-    // ── Registers ────────────────────────────────────────────────────────────
+    // ── Registers ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
     public byte A { get; internal set; }
     public byte F { get; internal set; }
-    
+
     // Flag helpers
     public bool FlagC { get => (F & (byte)Z80Flags.Carry) != 0; set => SetFlag(Z80Flags.Carry, value); }
     public bool FlagN { get => (F & (byte)Z80Flags.AddSub) != 0; set => SetFlag(Z80Flags.AddSub, value); }
@@ -57,10 +58,9 @@ public sealed partial class Cpu
     public ushort DE { get => (ushort)((D << 8) | E); set { D = (byte)(value >> 8); E = (byte)value; } }
     public ushort HL { get => (ushort)((H << 8) | L); set { H = (byte)(value >> 8); L = (byte)value; } }
 
-    public ushort WZ;
-
     public ushort PC { get; internal set; }
     public ushort SP { get; internal set; }
+    public ushort WZ; // Internal temporary register (MEMPTR)
 
     public ulong TotalCycles { get; private set; }
 
@@ -89,6 +89,7 @@ public sealed partial class Cpu
         _intPending = false;
         _eiDelay    = false;
         _indexMode  = IndexMode.HL;
+        _evaluatingHlPtr = false;
         WZ          = 0;
     }
 
@@ -96,7 +97,7 @@ public sealed partial class Cpu
     {
         for (int i = 0; i < 256; i++)
         {
-            _ops[i] = () => throw new NotImplementedException($"Opcode 0x{_bus.Read((ushort)(PC - 1)):X2} at 0x{(PC - 1):X4} not implemented");
+            _ops[i] = () => throw new NotImplementedException($"Opcode 0x{_bus.Read((ushort)(PC - 1)):X2} at 0x{(PC - 1):X4} not implemented");        
         }
 
         _ops[0x00] = NOP;
@@ -107,7 +108,7 @@ public sealed partial class Cpu
         _ops[0xFD] = HandleFD;
         _ops[0xD9] = EXX;
         _ops[0xEB] = () => { (DE, HL) = (HL, DE); Tick(4); };
-        _ops[0xE3] = () => { ushort tmp = GetReg16(2); SetReg16(2, ReadWord(SP)); WriteWord(SP, tmp); Tick(19); };
+        _ops[0xE3] = () => { ushort tmp = GetReg16(2); ushort val = ReadWord(SP); SetReg16(2, val); WZ = val; WriteWord(SP, tmp); Tick(19); };
 
         // Interrupts
         _ops[0xF3] = () => { IFF1 = IFF2 = false; Tick(4); };
@@ -115,9 +116,9 @@ public sealed partial class Cpu
 
         // Misc A
         _ops[0x27] = () => { DAA(); Tick(4); };
-        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; Tick(4); };
-        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; Tick(4); };
-        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; Tick(4); };
+        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
+        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
+        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
 
         // 8-bit Rotates (Base table)
         _ops[0x07] = () => { RLCA(); Tick(4); };
@@ -132,8 +133,8 @@ public sealed partial class Cpu
         _ops[0x31] = () => { SetReg16(3, FetchWord()); Tick(10); };
 
         // LD (nn), HL and LD HL, (nn)
-        _ops[0x22] = () => { WriteWord(FetchWord(), GetReg16(2)); Tick(16); };
-        _ops[0x2A] = () => { SetReg16(2, ReadWord(FetchWord())); Tick(16); };
+        _ops[0x22] = () => { ushort nn = FetchWord(); WZ = (ushort)(nn + 1); WriteWord(nn, GetReg16(2)); Tick(16); };
+        _ops[0x2A] = () => { ushort nn = FetchWord(); WZ = (ushort)(nn + 1); SetReg16(2, ReadWord(nn)); Tick(16); };
 
         // ADD HL, ss
         _ops[0x09] = () => DoAdd16(GetReg16(0));
@@ -153,15 +154,15 @@ public sealed partial class Cpu
         _ops[0x3B] = () => { SetReg16(3, (ushort)(GetReg16(3) - 1)); Tick(6); };
 
         // LD A, (nn) / LD (nn), A
-        _ops[0x3A] = () => { A = _bus.Read(FetchWord()); Tick(13); };
-        _ops[0x32] = () => { _bus.Write(FetchWord(), A); Tick(13); };
+        _ops[0x3A] = () => { ushort nn = FetchWord(); WZ = (ushort)(nn + 1); A = _bus.Read(nn); Tick(13); };
+        _ops[0x32] = () => { ushort nn = FetchWord(); WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF)); _bus.Write(nn, A); Tick(13); };
 
         // LD A, (BC/DE)
-        _ops[0x0A] = () => { A = _bus.Read(BC); Tick(7); };
-        _ops[0x1A] = () => { A = _bus.Read(DE); Tick(7); };
+        _ops[0x0A] = () => { A = _bus.Read(BC); WZ = (ushort)(BC + 1); Tick(7); };
+        _ops[0x1A] = () => { A = _bus.Read(DE); WZ = (ushort)(DE + 1); Tick(7); };
         _ops[0x02] = () => { _bus.Write(BC, A); Tick(7); };
         _ops[0x12] = () => { _bus.Write(DE, A); Tick(7); };
-        
+
         // LD r, n
         _ops[0x06] = () => { SetReg(0, Fetch()); Tick(7); };
         _ops[0x0E] = () => { SetReg(1, Fetch()); Tick(7); };
@@ -267,8 +268,8 @@ public sealed partial class Cpu
         _ops[0xFE] = () => { DoCp(Fetch());  Tick(7); };
 
         // I/O
-        _ops[0xD3] = () => { _ports?.Out((ushort)((A << 8) | Fetch()), A); Tick(11); };
-        _ops[0xDB] = () => { A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; Tick(11); };
+        _ops[0xD3] = () => { byte n = Fetch(); ushort port = (ushort)((A << 8) | n); _ports?.Out(port, A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); Tick(11); };
+        _ops[0xDB] = () => { byte n = Fetch(); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); Tick(11); };
 
         // Stack instructions
         _ops[0xC5] = PUSH_BC;
@@ -288,7 +289,7 @@ public sealed partial class Cpu
         _ops[0xC9] = RET;
         _ops[0xE9] = () => { PC = GetReg16(2); Tick(4); };
         _ops[0x76] = () => { _halted = true; PC--; Tick(4); };
-        _ops[0x10] = DJNZ;
+        _ops[0x10] = () => { sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); WZ = PC; Tick(13); } else { Tick(8); } };
 
         // RST
         for (int t = 0; t < 8; t++)
@@ -303,7 +304,7 @@ public sealed partial class Cpu
             _ops[0xC2 | (cc << 3)] = () => JP_cc_nn(condition);
             _ops[0xC4 | (cc << 3)] = () => CALL_cc_nn(condition);
             _ops[0xC0 | (cc << 3)] = () => RET_cc(condition);
-            
+
             if (cc < 4) // JR only has 4 conditions: NZ, Z, NC, C
             {
                 _ops[0x20 | (cc << 3)] = () => JR_cc_e(condition);
@@ -350,7 +351,7 @@ public sealed partial class Cpu
         }
         _eiDelay = false;
         if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); Tick(4); return; }
-        
+
         byte opcode = Fetch();
         
         // Use generator for NOP and ADD A, r
@@ -395,14 +396,20 @@ public sealed partial class Cpu
         if (_indexMode != IndexMode.HL)
         {
             ushort reg = _indexMode == IndexMode.IX ? _ix : _iy;
-            if (index == 4) return (byte)(reg >> 8);
-            if (index == 5) return (byte)(reg & 0xFF);
+            
+            // Redirection rule: H/L are only IXH/IXL if (IX+d) is NOT used.
+            if (index == 4 && !_hasIdxAddr && !_evaluatingHlPtr) return (byte)(reg >> 8);
+            if (index == 5 && !_hasIdxAddr && !_evaluatingHlPtr) return (byte)(reg & 0xFF);
             if (index == 6)
             {
-                sbyte d = (sbyte)Fetch();
-                _idxAddr = (ushort)(reg + d);
-                _hasIdxAddr = true;
-                Tick(8);
+                if (!_hasIdxAddr)
+                {
+                    sbyte d = (sbyte)Fetch();
+                    _idxAddr = (ushort)(reg + d);
+                    _hasIdxAddr = true;
+                    Tick(8);
+                }
+                WZ = _idxAddr;
                 return _bus.Read(_idxAddr);
             }
         }
@@ -446,13 +453,13 @@ public sealed partial class Cpu
     {
         if (_indexMode != IndexMode.HL)
         {
-            if (index == 4)
+            if (index == 4 && !_hasIdxAddr && !_evaluatingHlPtr)
             {
                 if (_indexMode == IndexMode.IX) _ix = (ushort)((_ix & 0x00FF) | (val << 8));
                 else                            _iy = (ushort)((_iy & 0x00FF) | (val << 8));
                 return;
             }
-            if (index == 5)
+            if (index == 5 && !_hasIdxAddr && !_evaluatingHlPtr)
             {
                 if (_indexMode == IndexMode.IX) _ix = (ushort)((_ix & 0xFF00) | val);
                 else                            _iy = (ushort)((_iy & 0xFF00) | val);
@@ -473,6 +480,7 @@ public sealed partial class Cpu
                     addr = (ushort)(reg + d);
                     Tick(8);
                 }
+                WZ = addr;
                 _bus.Write(addr, val);
                 return;
             }
@@ -492,4 +500,3 @@ public sealed partial class Cpu
         }
     }
 }
-

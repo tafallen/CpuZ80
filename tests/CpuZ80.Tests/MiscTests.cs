@@ -56,6 +56,17 @@ public class MiscTests : CpuFixture
     }
 
     [Fact]
+    public void SCF_UpdatesUndocumentedFlagsFromA()
+    {
+        Cpu.A = 0x28; // Bits 3 and 5 set
+        Cpu.F = 0x00;
+        Load(0x0000, 0x37); // SCF
+        Step();
+        Assert.Equal(0x28, Cpu.F & 0x28);
+        Assert.True(Cpu.FlagC);
+    }
+
+    [Fact]
     public void SetUndocumentedFlagsFromWZ_SetsCorrectBits()
     {
         Cpu.WZ = 0x2800; // Bits 11 and 13 set
