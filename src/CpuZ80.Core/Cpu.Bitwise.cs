@@ -19,7 +19,12 @@ public sealed partial class Cpu
             }
             else if (opcode < 0x80) // BIT
             {
-                _cbOps[opcode] = () => { DoBit(bit, GetReg(reg)); Tick((reg == 6) ? 12 : 8); };
+                _cbOps[opcode] = () => { 
+                    byte val = GetReg(reg);
+                    DoBit(bit, val); 
+                    if (reg == 6) SetUndocumentedFlagsFromWZ();
+                    Tick((reg == 6) ? 12 : 8); 
+                };
             }
             else if (opcode < 0xC0) // RES
             {
@@ -84,9 +89,10 @@ public sealed partial class Cpu
         FlagZ = (val & (1 << bit)) == 0;
         FlagN = false;
         FlagH = true;
-        FlagS = bit == 7 && (val & 0x80) != 0;
-        // PV flag is unpredictable on Z80 for BIT, but often mirrors Z
-        FlagPV = FlagZ; 
+        FlagPV = FlagZ;
+        FlagS = bit == 7 && !FlagZ;
+        // Zilog Z80: bits 3 and 5 are copies of bits 3 and 5 of the tested register (operand)
+        F = (byte)((F & ~0x28) | (val & 0x28));
     }
 
     private void HandleCB()
@@ -95,4 +101,3 @@ public sealed partial class Cpu
         _cbOps[opcode]();
     }
 }
-

@@ -93,12 +93,14 @@ public sealed partial class Cpu
                 FlagPV = GetParity(val);
                 FlagN = false;
                 F = (byte)((F & ~0x28) | (val & 0x28));
+                WZ = (ushort)(BC + 1);
                 Tick(12);
             };
             _edOps[0x41 | (reg << 3)] = () =>
             {
                 byte val = reg == 6 ? (byte)0 : GetReg(reg);
                 _ports?.Out(BC, val);
+                WZ = (ushort)(BC + 1);
                 Tick(12);
             };
         }
@@ -128,6 +130,7 @@ public sealed partial class Cpu
     {
         int carry = FlagC ? 1 : 0;
         int res = HL + val + carry;
+        ushort oldHl = HL;
         
         FlagN = false;
         FlagH = (((HL & 0x0FFF) + (val & 0x0FFF) + carry) & 0x1000) != 0;
@@ -138,6 +141,7 @@ public sealed partial class Cpu
         
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
+        WZ = (ushort)(oldHl + 1);
         F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
         Tick(15);
     }
@@ -146,6 +150,7 @@ public sealed partial class Cpu
     {
         int carry = FlagC ? 1 : 0;
         int res = HL - val - carry;
+        ushort oldHl = HL;
         
         FlagN = true;
         FlagH = (((HL & 0x0FFF) - (val & 0x0FFF) - carry) & 0x1000) != 0;
@@ -156,6 +161,7 @@ public sealed partial class Cpu
         
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
+        WZ = (ushort)(oldHl + 1);
         F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
         Tick(15);
     }
@@ -217,6 +223,7 @@ public sealed partial class Cpu
         byte val = _bus.Read(HL++);
         byte res = (byte)(A - val);
         BC--;
+        WZ++;
         FlagN = true;
         FlagH = (A & 0x0F) < (val & 0x0F);
         FlagZ = res == 0;
@@ -245,6 +252,7 @@ public sealed partial class Cpu
         byte val = _bus.Read(HL--);
         byte res = (byte)(A - val);
         BC--;
+        WZ--;
         FlagN = true;
         FlagH = (A & 0x0F) < (val & 0x0F);
         FlagZ = res == 0;

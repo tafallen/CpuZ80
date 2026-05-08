@@ -81,6 +81,7 @@ public sealed partial class Cpu
 
         ushort result = (ushort)(res & 0xFFFF);
         SetReg16(2, result);
+        WZ = (ushort)(cur + 1);
         F = (byte)((F & ~0x28) | ((result >> 8) & 0x28));
         Tick(11);
     }

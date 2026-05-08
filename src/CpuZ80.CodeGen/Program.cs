@@ -95,9 +95,9 @@ class Program
         baseInstructions.Add(new Instruction(0xF9, "LD SP, HL", "SP = HL", new[] { 6 }));
         baseInstructions.Add(new Instruction(0xE9, "JP (HL)", "PC = HL", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x76, "HALT", "{ _halted = true; PC--; }", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x10, "DJNZ e", "{ sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); Tick(5); } }", new[] { 4, 4 }));
-        baseInstructions.Add(new Instruction(0xD3, "OUT (n), A", "{ _ports?.Out((ushort)((A << 8) | Fetch()), A); }", new[] { 4, 3, 4 }));
-        baseInstructions.Add(new Instruction(0xDB, "IN A, (n)", "{ A = _ports?.In((ushort)((A << 8) | Fetch())) ?? 0xFF; }", new[] { 4, 3, 4 }));
+        baseInstructions.Add(new Instruction(0x10, "DJNZ e", "{ sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); WZ = PC; Tick(5); } }", new[] { 4, 4 }));
+        baseInstructions.Add(new Instruction(0xD3, "OUT (n), A", "{ byte n = Fetch(); _ports?.Out((ushort)((A << 8) | n), A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }", new[] { 4, 3, 4 }));
+        baseInstructions.Add(new Instruction(0xDB, "IN A, (n)", "{ byte n = Fetch(); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); }", new[] { 4, 3, 4 }));
 
         // --- CB Instructions ---
         string[] shiftNames = { "RLC", "RRC", "RL", "RR", "SLA", "SRA", "SLL", "SRL" };
@@ -119,8 +119,8 @@ class Program
             edInstructions.Add(new Instruction((byte)(0x4A | (i << 4)), $"ADC HL, {dd[i]}", $"DoAdc16({dd[i]})", new int[0]));
             edInstructions.Add(new Instruction((byte)(0x42 | (i << 4)), $"SBC HL, {dd[i]}", $"DoSbc16({dd[i]})", new int[0]));
         }
-        edInstructions.Add(new Instruction(0x67, "RRD", "RRD()", new int[0]));
-        edInstructions.Add(new Instruction(0x6F, "RLD", "RLD()", new int[0]));
+        edInstructions.Add(new Instruction(0x67, "RRD", "{ RRD(); WZ = (ushort)(HL + 1); }", new int[0]));
+        edInstructions.Add(new Instruction(0x6F, "RLD", "{ RLD(); WZ = (ushort)(HL + 1); }", new int[0]));
         for (int i = 0; i < 3; i++) {
             if (i == 2) continue; // SP handle separately
             edInstructions.Add(new Instruction((byte)(0x4B | (i << 4)), $"LD {dd[i]}, (nn)", $"{dd[i]} = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
