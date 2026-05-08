@@ -1,0 +1,52 @@
+<h2>MEMPTR (WZ Register): The Final Frontier of Accuracy</h2>
+<p class="subtitle">Achieving bit-perfect flag behavior for undocumented opcodes</p>
+
+<div class="mockup">
+  <div class="mockup-header">The Problem: Approximate Flags</div>
+  <div class="mockup-body">
+    <pre>
+// Current implementation (Cpu.Arithmetic.cs)
+F = (byte)((F & ~0x28) | (result & 0x28));
+    </pre>
+    <div style="color: #e74c3c; font-weight: bold;">Issue: While 90% correct, this fails strict ZEXALL tests for block ops and bit manipulation.</div>
+  </div>
+</div>
+
+<div class="mockup" style="margin-top: 20px;">
+  <div class="mockup-header">The Solution: Hidden 16-bit WZ Register</div>
+  <div class="mockup-body">
+    <pre>
+// Correct implementation using MEMPTR
+F = (byte)((F & ~0x28) | ((MEMPTR >> 8) & 0x28));
+    </pre>
+    <div style="color: #27ae60; font-weight: bold;">Benefit: CRC-perfect functional accuracy. Identical to original Silicon.</div>
+  </div>
+</div>
+
+<h3>Implementation Approaches</h3>
+
+<div class="options">
+  <div class="option" data-choice="explicit-memptr" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Explicit WZ Register</h3>
+      <p>Add <code>ushort WZ</code> to the core registers. Update it manually in every instruction that touches it (most memory/jump instructions).</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="generator-memptr" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Generator-Managed MEMPTR</h3>
+      <p>The Code Generator automatically injects MEMPTR updates based on opcode type. Reduces manual error in tracking this tricky register.</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="lazy-evaluation" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Lazy Evaluation</h3>
+      <p>Only track MEMPTR for instructions where it affects the visible Z80 state (Block ops, BIT). Fast, but technically less accurate internally.</p>
+    </div>
+  </div>
+</div>

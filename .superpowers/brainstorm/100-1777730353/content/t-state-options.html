@@ -1,0 +1,64 @@
+<h2>T-State Timing: Instruction-Level vs. Cycle-Level</h2>
+<p class="subtitle">Enabling contended memory support for ZX Spectrum accuracy</p>
+
+<div class="comparison">
+  <div class="compare-left">
+    <h3>Current: Atomic Timing</h3>
+    <div class="mockup">
+      <div class="mockup-header">INC (HL) - 11 Cycles</div>
+      <div class="mockup-body">
+        <ol>
+          <li>Read HL value from memory (0 cycles)</li>
+          <li>Increment value (0 cycles)</li>
+          <li>Write back to memory (0 cycles)</li>
+          <li><strong>Wait 11 Cycles</strong> at end.</li>
+        </ol>
+        <div style="color: #e74c3c; font-weight: bold;">Issue: If ULA stops the CPU in step 1, we can't emulate it correctly.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="compare-right">
+    <h3>Proposed: T-State Precision</h3>
+    <div class="mockup">
+      <div class="mockup-header">INC (HL) - 11 Cycles</div>
+      <div class="mockup-body">
+        <ol>
+          <li><strong>Wait 4 Cycles</strong> (Fetch Opcode)</li>
+          <li><strong>Wait 3 Cycles</strong> (Read HL)</li>
+          <li><strong>Wait 1 Cycle</strong> (ALU Delay)</li>
+          <li><strong>Wait 3 Cycles</strong> (Write HL)</li>
+        </ol>
+        <div style="color: #27ae60; font-weight: bold;">Benefit: The ULA can pause the CPU at any specific clock cycle.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h3>Implementation Approaches</h3>
+
+<div class="options">
+  <div class="option" data-choice="bus-delay" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Bus-Driven Delay</h3>
+      <p>Modify IBus to handle timing. <code>_bus.Read(addr)</code> automatically increments <code>TotalCycles</code>. Simple but less flexible for complex internal CPU delays.</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="explicit-ticks" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Explicit T-State Ticks</h3>
+      <p>CPU manually calls <code>Tick(n)</code> between operations. Maximum control over internal Z80 sub-cycle timing (M-cycles).</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="generator-integration" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Generator-Managed (Recommended)</h3>
+      <p>The Code Generator injects the correct T-State delays between memory operations based on Z80 timing tables. Cleanest CPU logic, automated expansion.</p>
+    </div>
+  </div>
+</div>

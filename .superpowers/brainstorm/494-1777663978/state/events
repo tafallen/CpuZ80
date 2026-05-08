@@ -1,0 +1,1 @@
+{"type":"click","text":"2\n    \n      Page Entry Struct (Recommended)\n      Array of 256 structs containing { Device, BaseAddress }. Preserves existing 'clean' device logic.","choice":"page-entry-struct","id":null,"timestamp":1777664031560}

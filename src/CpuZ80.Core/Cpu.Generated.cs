@@ -57,7 +57,7 @@ public sealed partial class Cpu
             case 0x2C: /* INC L */ Tick(4); L = DoInc(L); break;
             case 0x2D: /* DEC L */ Tick(4); L = DoDec(L); break;
             case 0x2E: /* LD L, n */ Tick(4); L = Fetch(); Tick(3); break;
-            case 0x2F: /* CPL */ Tick(4); A = (byte)~A; FlagN = true; FlagH = true;; break;
+            case 0x2F: /* CPL */ Tick(4); A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28));; break;
             case 0x30: /* JR NC, e */ Tick(4); { sbyte e = (sbyte)Fetch(); if (!FlagC) { PC = (ushort)(PC + e); Tick(5); } }; Tick(3); break;
             case 0x31: /* LD SP, nn */ Tick(4); SP = FetchWord(); Tick(3); Tick(3); break;
             case 0x32: /* LD (nn), A */ Tick(4); { ushort nn = FetchWord(); _bus.Write(nn, A);  WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF)); }; Tick(3); Tick(3); Tick(3); break;
@@ -65,7 +65,7 @@ public sealed partial class Cpu
             case 0x34: /* INC _bus.Read(HL) */ Tick(4); SetReg(6, DoInc(_bus.Read(HL))); Tick(3); Tick(4); break;
             case 0x35: /* DEC _bus.Read(HL) */ Tick(4); SetReg(6, DoDec(_bus.Read(HL))); Tick(3); Tick(4); break;
             case 0x36: /* LD _bus.Read(HL), n */ Tick(4); SetReg(6, Fetch()); Tick(3); Tick(3); break;
-            case 0x37: /* SCF */ Tick(4); FlagC = true; FlagN = false; FlagH = false;; break;
+            case 0x37: /* SCF */ Tick(4); FlagC = true; FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28));; break;
             case 0x38: /* JR C, e */ Tick(4); { sbyte e = (sbyte)Fetch(); if (FlagC) { PC = (ushort)(PC + e); Tick(5); } }; Tick(3); break;
             case 0x39: /* ADD HL, SP */ DoAdd16(SP); break;
             case 0x3A: /* LD A, (nn) */ Tick(4); { ushort nn = FetchWord(); A = _bus.Read(nn);  WZ = (ushort)(nn + 1); }; Tick(3); Tick(3); Tick(3); break;
@@ -73,7 +73,7 @@ public sealed partial class Cpu
             case 0x3C: /* INC A */ Tick(4); A = DoInc(A); break;
             case 0x3D: /* DEC A */ Tick(4); A = DoDec(A); break;
             case 0x3E: /* LD A, n */ Tick(4); A = Fetch(); Tick(3); break;
-            case 0x3F: /* CCF */ Tick(4); FlagH = FlagC; FlagC = !FlagC; FlagN = false;; break;
+            case 0x3F: /* CCF */ Tick(4); FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28));; break;
             case 0x40: /* LD B, B */ Tick(4); B = B; break;
             case 0x41: /* LD B, C */ Tick(4); B = C; break;
             case 0x42: /* LD B, D */ Tick(4); B = D; break;

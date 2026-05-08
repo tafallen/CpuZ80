@@ -1,0 +1,54 @@
+<h2>Memory Routing: O(N) &rarr; O(1)</h2>
+<p class="subtitle">Refactoring AddressDecoder for professional-grade performance</p>
+
+<div class="mockup">
+  <div class="mockup-header">Current Bottleneck: O(N) Lookup</div>
+  <div class="mockup-body">
+    <pre>
+// Every read/write iterates the list
+foreach (var mapping in _mappings) {
+    if (address in mapping) return mapping.device;
+}
+    </pre>
+    <div style="color: #e74c3c; font-weight: bold;">Problem: Scalability. As more devices are added, emulation slows down.</div>
+  </div>
+</div>
+
+<div class="mockup" style="margin-top: 20px;">
+  <div class="mockup-header">Proposed Solution: 256-Page Table (O(1))</div>
+  <div class="mockup-body">
+    <pre>
+// O(1) Array Lookup
+return _pages[address >> 8].Read(address);
+    </pre>
+    <div style="color: #27ae60; font-weight: bold;">Benefit: Constant time routing regardless of mapping complexity.</div>
+  </div>
+</div>
+
+<h3>Select Implementation Approach</h3>
+
+<div class="options">
+  <div class="option" data-choice="pointer-array" onclick="toggleSelect(this)">
+    <div class="letter">1</div>
+    <div class="content">
+      <h3>Simple Pointer Array</h3>
+      <p>Array of 256 IBus references. Fastest, but requires devices to know their own base offset.</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="page-entry-struct" onclick="toggleSelect(this)">
+    <div class="letter">2</div>
+    <div class="content">
+      <h3>Page Entry Struct (Recommended)</h3>
+      <p>Array of 256 structs containing { Device, BaseAddress }. Preserves existing 'clean' device logic.</p>
+    </div>
+  </div>
+  
+  <div class="option" data-choice="dual-tables" onclick="toggleSelect(this)">
+    <div class="letter">3</div>
+    <div class="content">
+      <h3>Dual R/W Tables</h3>
+      <p>Separate tables for Read vs Write. Ideal for write-protected memory or bank switching.</p>
+    </div>
+  </div>
+</div>

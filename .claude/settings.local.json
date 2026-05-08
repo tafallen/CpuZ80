@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet test *)",
+      "Bash(dotnet build *)",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(taskkill /F /IM testhost.exe)",
+      "Bash(taskkill /F /PID 33956)",
+      "Bash(git branch *)",
+      "Bash(git add *)",
+      "Bash(git rm *)",
+      "Bash(git commit -m ' *)",
+      "Bash(dotnet tool *)",
+      "Bash(dotnet sln *)",
+      "WebSearch",
+      "WebFetch(domain:www.tablix.org)",
+      "WebFetch(domain:www.problemkaputt.de)",
+      "WebFetch(domain:searle.x10host.com)",
+      "WebFetch(domain:blog.tynemouthsoftware.co.uk)",
+      "WebFetch(domain:www.scribd.com)",
+      "WebFetch(domain:qrp.gr)",
+      "WebFetch(domain:k1.spdns.de)",
+      "WebFetch(domain:lemmings.info)",
+      "WebFetch(domain:worldofspectrum.net)",
+      "WebFetch(domain:www.instructables.com)",
+      "Bash(xargs grep *)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.user.dccnet.com)",
+      "WebFetch(domain:sinclairzxworld.com)",
+      "WebFetch(domain:oldcomputer.info)",
+      "WebFetch(domain:quix.us)",
+      "WebFetch(domain:floooh.github.io)",
+      "Bash(powershell -Command ' *)"
+    ]
+  }
+}

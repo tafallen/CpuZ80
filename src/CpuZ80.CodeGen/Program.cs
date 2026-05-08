@@ -89,9 +89,9 @@ class Program
         baseInstructions.Add(new Instruction(0xF3, "DI", "IFF1 = IFF2 = false", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xFB, "EI", "IFF1 = IFF2 = true; _eiDelay = true;", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x27, "DAA", "DAA()", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x2F, "CPL", "A = (byte)~A; FlagN = true; FlagH = true;", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x37, "SCF", "FlagC = true; FlagN = false; FlagH = false;", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x3F, "CCF", "FlagH = FlagC; FlagC = !FlagC; FlagN = false;", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x2F, "CPL", "A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x37, "SCF", "FlagC = true; FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x3F, "CCF", "FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xF9, "LD SP, HL", "SP = HL", new[] { 6 }));
         baseInstructions.Add(new Instruction(0xE9, "JP (HL)", "PC = HL", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x76, "HALT", "{ _halted = true; PC--; }", new[] { 4 }));

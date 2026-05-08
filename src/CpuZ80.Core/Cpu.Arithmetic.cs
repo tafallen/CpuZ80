@@ -208,11 +208,5 @@ public sealed partial class Cpu
         FlagPV = GetParity(A);
         F = (byte)((F & ~0x28) | (A & 0x28));
     }
-
-    internal void SetUndocumentedFlagsFromWZ()
-    {
-        // Bits 3 and 5 of F are taken from bits 11 and 13 of WZ (high byte bits 3 and 5)
-        F = (byte)((F & ~0x28) | ((WZ >> 8) & 0x28));
-    }
 }
 
