@@ -74,10 +74,33 @@ public sealed partial class Cpu
     public ushort WZ; // Internal temporary register (MEMPTR)
 
     public ulong TotalCycles { get; private set; }
+    public bool WaitPin { get; set; }
 
     private void Tick(int count)
     {
-        TotalCycles += (ulong)count;
+        for (int i = 0; i < count; i++)
+        {
+            TotalCycles++;
+            while (WaitPin)
+            {
+                // In a real Z80, the WAIT pin is sampled on the falling edge of T2
+                // and every subsequent T-state until it goes high.
+                // We model this by spinning (in a single-threaded context) or
+                // the machine could set/clear this pin between Step calls.
+                // For high-performance emulation, machines typically calculate
+                // contention upfront, but this provides the primitive.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Machine-specific hook for I/O port timing.
+    /// Default Z80 behavior is 4 T-states for the I/O itself (M3 cycle).
+    /// </summary>
+    private void PortTick(ushort port)
+    {
+        // Machines like the Spectrum can add contention here.
+        Tick(4);
     }
 
     public Cpu(IBus bus, IPortBus? ports = null)
