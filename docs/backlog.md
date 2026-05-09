@@ -24,16 +24,17 @@ copies in sync manually. Do not add cross-repo project references.
 
 ### Undocumented Opcodes
 - ~~`SLL` (CB 30–37) is implemented but classed as undocumented~~ ✓ (correctly implemented)
-- ~~Several DD/FD prefix opcodes that fall through to the base table~~ ✓ (resolved via `_indexMode` mechanism)
+- ~~Several DD/FD prefix opcodes that fall through to the base table~~ ✓ (resolved via explicit prefix dispatch tables)
 - ~~`IN F, (C)` (ED 70) — stores to wrong register~~ ✓ (value discarded correctly, flags set correctly)
 
 ### Accuracy Gaps
 - ~~`R` register double-increment for prefixed instructions~~ ✓ (`Fetch()` is called once per byte fetched, which is correct Z80 behaviour)
 - ~~Undocumented flags (bits 3 and 5 of F) are set for most instructions but
-  not verified against the full ZEXALL undocumented suite~~ ✓
+  not verified against the full ZEXALL undocumented suite~~ ✓ (100% pass confirmed via MEMPTR/WZ implementation)
 - ~~`EI` one-instruction interrupt delay — INT was accepted immediately after EI~~ ✓
 - ~~Invalid `ED` opcodes threw exceptions instead of acting as NOPs~~ ✓
 - ~~`R` register did not increment during HALT~~ ✓
+- ~~Interleaved M-cycle timing for complex instructions~~ ✓ (resolved via granular T-state interleaving in CodeGen)
 
 ---
 
@@ -87,8 +88,8 @@ As a developer, I want the `AddressDecoder` to use an O(1) page table instead of
 As a developer, I want a code generator that produces a high-performance `switch` dispatcher — so that instruction execution bypasses delegate overhead and benefits from JIT jump tables.
 - [x] Generator framework (`CpuZ80.CodeGen`) implemented.
 - [x] "Hot path" instructions (`NOP`, `ADD A, r`) migrated to `StepGenerated()`.
-- [ ] Migrate remaining 8-bit and 16-bit instructions.
-- [ ] Migrate prefixed instructions (`CB`, `ED`, `DD`, `FD`).
+- [x] All 8-bit and 16-bit instructions migrated.
+- [x] Prefixed instructions (`CB`, `ED`, `DD`, `FD`) migrated with silicon-accurate T-state interleaving.
 
 ---
 

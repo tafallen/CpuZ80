@@ -4,10 +4,11 @@ This project emulates the Zilog Z80 CPU with a focus on functional accuracy and 
 
 ## Architecture
 
-- **Modular CPU:** The `Cpu` class is a `sealed partial` class. Logic is grouped by instruction type (Arithmetic, Bitwise, ControlFlow, Extended, Indexed, Stack).
+- **Modular CPU:** The `Cpu` class is a `sealed partial` class. Functional logic is grouped by type (Arithmetic, Bitwise, etc.), while instruction dispatch is handled by `Cpu.Generated.cs`.
 - **Bus Abstraction:** The CPU interacts with memory via `IBus` and I/O via `IPortBus`.
-- **Instruction Dispatch:** Uses tiered `Action[]` dispatch tables for performance and modularity.
-- **IndexMode:** Transient state pattern (`_indexMode`) is used to handle `IX/IY` prefixing without code duplication.
+- **High-Performance Dispatch:** Uses a generated `switch` dispatcher with inlined T-state interleaving for maximum performance and timing accuracy.
+- **Silicon-Accurate Timing:** Interleaves `Tick(n)` calls with memory and I/O operations at the M-cycle level, enabling accurate hardware contention emulation.
+- **Explicit Prefix Tables:** `DD` (IX) and `FD` (IY) prefixes use dedicated, generated dispatch tables, eliminating fragile runtime redirection flags.
 
 ## Engineering Standards
 
