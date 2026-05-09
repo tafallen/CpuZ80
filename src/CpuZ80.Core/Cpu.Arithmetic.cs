@@ -83,7 +83,6 @@ public sealed partial class Cpu
         SetReg16(2, result);
         WZ = (ushort)(cur + 1);
         SetUndocumentedFlags((byte)(result >> 8));
-        Tick(11);
     }
 
     private void DoAnd(byte val)

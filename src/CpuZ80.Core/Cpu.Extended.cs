@@ -143,29 +143,26 @@ public sealed partial class Cpu
         FlagS = (HL & 0x8000) != 0;
         WZ = (ushort)(oldHl + 1);
         SetUndocumentedFlags((byte)(HL >> 8));
-        Tick(15);
-    }
+        }
 
-    private void DoSbc16(ushort val)
-    {
+        private void DoSbc16(ushort val)
+        {
         int carry = FlagC ? 1 : 0;
         int res = HL - val - carry;
         ushort oldHl = HL;
-        
+
         FlagN = true;
         FlagH = (((HL & 0x0FFF) - (val & 0x0FFF) - carry) & 0x1000) != 0;
         FlagPV = (((HL ^ val) & (HL ^ res)) & 0x8000) != 0;
         FlagC = res < 0;
-        
+
         HL = (ushort)(res & 0xFFFF);
-        
+
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
         WZ = (ushort)(oldHl + 1);
         SetUndocumentedFlags((byte)(HL >> 8));
-        Tick(15);
-    }
-
+        }
     private void LDI()
     {
         byte val = _bus.Read(HL++);
@@ -178,8 +175,6 @@ public sealed partial class Cpu
         // Undocumented flags: Bit 5 = (A+val) bit 1, Bit 3 = (A+val) bit 3
         byte res = (byte)(A + val);
         F = (byte)((F & ~0x28) | (res & 0x08) | ((res << 4) & 0x20));
-        
-        Tick(16);
     }
 
     private void LDIR()
@@ -204,8 +199,6 @@ public sealed partial class Cpu
         // Undocumented flags
         byte res = (byte)(A + val);
         F = (byte)((F & ~0x28) | (res & 0x08) | ((res << 4) & 0x20));
-
-        Tick(16);
     }
 
     private void LDDR()
@@ -233,8 +226,6 @@ public sealed partial class Cpu
         // Undocumented flags
         byte res2 = (byte)(res - (FlagH ? 1 : 0));
         F = (byte)((F & ~0x28) | (res2 & 0x08) | ((res2 << 4) & 0x20));
-
-        Tick(16);
     }
 
     private void CPIR()
@@ -262,8 +253,6 @@ public sealed partial class Cpu
         // Undocumented flags
         byte res2 = (byte)(res - (FlagH ? 1 : 0));
         F = (byte)((F & ~0x28) | (res2 & 0x08) | ((res2 << 4) & 0x20));
-
-        Tick(16);
     }
 
     private void CPDR()
@@ -287,11 +276,10 @@ public sealed partial class Cpu
         byte val = A;
         A = 0;
         SubInternal(val, false);
-        Tick(4); // (8 total including prefix fetch)
     }
 
-    private void RETI() { RET(); IFF1 = IFF2; Tick(4); }
-    private void RETN() { RET(); IFF1 = IFF2; Tick(4); }
+    private void RETI() { RET(); IFF1 = IFF2; }
+    private void RETN() { RET(); IFF1 = IFF2; }
 
     private void RRD()
     {
@@ -303,7 +291,6 @@ public sealed partial class Cpu
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);
-        Tick(14); // (18 total)
     }
 
     private void INI()
@@ -313,7 +300,6 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        Tick(16);
     }
 
     private void INIR()
@@ -329,7 +315,6 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        Tick(16);
     }
 
     private void INDR()
@@ -345,7 +330,6 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        Tick(16);
     }
 
     private void OTIR()
@@ -361,7 +345,6 @@ public sealed partial class Cpu
         B--;
         FlagN = true;
         FlagZ = B == 0;
-        Tick(16);
     }
 
     private void OTDR()
@@ -380,7 +363,6 @@ public sealed partial class Cpu
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);
-        Tick(14); // (18 total)
     }
 }
 

@@ -2,7 +2,16 @@ using System.Text;
 
 namespace CpuZ80.CodeGen;
 
-public record Instruction(byte Opcode, string Mnemonic, string Action, int[] Cycles, string? WzAction = null);
+public record Instruction(byte Opcode, string Mnemonic, string[] Actions, int[] Cycles)
+{
+    public Instruction(byte opcode, string mnemonic, string action, int[] cycles, string? wzAction = null)
+        : this(opcode, mnemonic, new[] { action }, cycles)
+    {
+        if (!string.IsNullOrEmpty(wzAction)) {
+            Actions[0] = Actions[0] + (string.IsNullOrEmpty(Actions[0]) ? "" : "; ") + wzAction;
+        }
+    }
+}
 
 class Program
 {
@@ -22,21 +31,46 @@ class Program
         baseInstructions.Add(new Instruction(0x00, "NOP", "", new[] { 4 }));
 
         string[] dd = { "BC", "DE", "HL", "SP" };
-        for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x01 | (i << 4)), $"LD {dd[i]}, nn", $"{dd[i]} = FetchWord()", new[] { 4, 3, 3 }));
+        for (int i = 0; i < 4; i++) {
+            string reg = dd[i];
+            baseInstructions.Add(new Instruction((byte)(0x01 | (i << 4)), $"LD {reg}, nn", 
+                new[] { "", "byte lo = Fetch()", $"byte hi = Fetch(); {reg} = (ushort)(lo | (hi << 8))" }, 
+                new[] { 4, 3, 3 }));
+        }
+
         for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x03 | (i << 4)), $"INC {dd[i]}", $"{dd[i]}++", new[] { 6 }));
         for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x0B | (i << 4)), $"DEC {dd[i]}", $"{dd[i]}--", new[] { 6 }));
-        for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x06 | (i << 3)), $"LD {regs[i]}, n", string.Format(regSetters[i], "Fetch()"), (i == 6 ? new[] { 4, 3, 3 } : new[] { 4, 3 })));
+        
+        for (int i = 0; i < 8; i++) {
+            if (i == 6) {
+                 baseInstructions.Add(new Instruction((byte)(0x06 | (i << 3)), $"LD {regs[i]}, n", 
+                    new[] { "", "byte n = Fetch()", "SetReg(6, n)" }, 
+                    new[] { 4, 3, 3 }));
+            } else {
+                 baseInstructions.Add(new Instruction((byte)(0x06 | (i << 3)), $"LD {regs[i]}, n", 
+                    new[] { "", $"byte n = Fetch(); {regs[i]} = n" }, 
+                    new[] { 4, 3 }));
+            }
+        }
 
-        baseInstructions.Add(new Instruction(0x02, "LD (BC), A", "_bus.Write(BC, A)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x12, "LD (DE), A", "_bus.Write(DE, A)", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", "A = _bus.Read(BC)", new[] { 4, 3 }, "WZ = (ushort)(BC + 1)"));
-        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", "A = _bus.Read(DE)", new[] { 4, 3 }, "WZ = (ushort)(DE + 1)"));
-        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", "{ ushort nn = FetchWord(); WriteWord(nn, HL); }", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
-        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", "{ ushort nn = FetchWord(); HL = ReadWord(nn); }", new[] { 4, 3, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
-        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", "{ ushort nn = FetchWord(); _bus.Write(nn, A); }", new[] { 4, 3, 3, 3 }, "WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF))"));
-        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", "{ ushort nn = FetchWord(); A = _bus.Read(nn); }", new[] { 4, 3, 3, 3 }, "WZ = (ushort)(nn + 1)"));
+        baseInstructions.Add(new Instruction(0x02, "LD (BC), A", new[] { "", "_bus.Write(BC, A)" }, new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0x12, "LD (DE), A", new[] { "", "_bus.Write(DE, A)" }, new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0x0A, "LD A, (BC)", new[] { "", "A = _bus.Read(BC); WZ = (ushort)(BC + 1)" }, new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0x1A, "LD A, (DE)", new[] { "", "A = _bus.Read(DE); WZ = (ushort)(DE + 1)" }, new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0x22, "LD (nn), HL", 
+            new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", "_bus.Write(nn, L)", "_bus.Write((ushort)(nn + 1), H)" }, 
+            new[] { 4, 3, 3, 3, 3 }));
+        baseInstructions.Add(new Instruction(0x2A, "LD HL, (nn)", 
+            new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", "L = _bus.Read(nn)", "H = _bus.Read((ushort)(nn + 1))" }, 
+            new[] { 4, 3, 3, 3, 3 }));
+        baseInstructions.Add(new Instruction(0x32, "LD (nn), A", 
+            new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF))", "_bus.Write(nn, A)" }, 
+            new[] { 4, 3, 3, 3 }));
+        baseInstructions.Add(new Instruction(0x3A, "LD A, (nn)", 
+            new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", "A = _bus.Read(nn)" }, 
+            new[] { 4, 3, 3, 3 }));
 
-        for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"DoAdd16({dd[i]})", new int[0])); // DoAdd16 calls Tick
+        for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"DoAdd16({dd[i]})", new[] { 4, 4, 3 })); 
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x04 | (i << 3)), $"INC {regs[i]}", string.Format(regSetters[i], $"DoInc({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x05 | (i << 3)), $"DEC {regs[i]}", string.Format(regSetters[i], $"DoDec({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
 
@@ -58,18 +92,32 @@ class Program
         string[] conditions = { "!FlagZ", "FlagZ", "!FlagC", "FlagC", "!FlagPV", "FlagPV", "!FlagS", "FlagS" };
         string[] condNames = { "NZ", "Z", "NC", "C", "PO", "PE", "P", "M" };
         for (int cc = 0; cc < 8; cc++) {
-            baseInstructions.Add(new Instruction((byte)(0xC0 | (cc << 3)), $"RET {condNames[cc]}", $"if ({conditions[cc]}) {{ PC = Pop(); Tick(6); }}", new[] { 5 }));
-            baseInstructions.Add(new Instruction((byte)(0xC2 | (cc << 3)), $"JP {condNames[cc]}, nn", $"{{ ushort nn = FetchWord(); if ({conditions[cc]}) PC = nn; }}", new[] { 4, 3, 3 }));
-            baseInstructions.Add(new Instruction((byte)(0xC4 | (cc << 3)), $"CALL {condNames[cc]}, nn", $"{{ ushort nn = FetchWord(); if ({conditions[cc]}) {{ Push(PC); PC = nn; Tick(7); }} }}", new[] { 4, 3, 3 }));
-            if (cc < 4) baseInstructions.Add(new Instruction((byte)(0x20 | (cc << 3)), $"JR {condNames[cc]}, e", $"{{ sbyte e = (sbyte)Fetch(); if ({conditions[cc]}) {{ PC = (ushort)(PC + e); Tick(5); }} }}", new[] { 4, 3 }));
+            baseInstructions.Add(new Instruction((byte)(0xC0 | (cc << 3)), $"RET {condNames[cc]}", 
+                new[] { "if (!" + conditions[cc] + ") return", "PC = Pop()" }, new[] { 5, 6 })); // 5, 11 total
+            baseInstructions.Add(new Instruction((byte)(0xC2 | (cc << 3)), $"JP {condNames[cc]}, nn", 
+                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); if (" + conditions[cc] + ") PC = (ushort)(lo | (hi << 8))" }, new[] { 4, 3, 3 }));
+            baseInstructions.Add(new Instruction((byte)(0xC4 | (cc << 3)), $"CALL {condNames[cc]}, nn", 
+                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); if (" + conditions[cc] + ") { ushort nn = (ushort)(lo | (hi << 8)); Push(PC); PC = nn; Tick(7); }" }, new[] { 4, 3, 3 }));
+            if (cc < 4) baseInstructions.Add(new Instruction((byte)(0x20 | (cc << 3)), $"JR {condNames[cc]}, e", 
+                new[] { "", "sbyte e = (sbyte)Fetch(); if (" + conditions[cc] + ") { PC = (ushort)(PC + e); Tick(5); }" }, new[] { 4, 3 }));
         }
 
         string[] qq = { "BC", "DE", "HL", "AF" };
         for (int i = 0; i < 4; i++) {
-            string val = (qq[i] == "AF") ? "((A << 8) | F)" : qq[i];
-            baseInstructions.Add(new Instruction((byte)(0xC5 | (i << 4)), $"PUSH {qq[i]}", $"Push((ushort){val})", new[] { 4, 3, 4 }));
-            string popAction = (qq[i] == "AF") ? "{ ushort val = Pop(); A = (byte)(val >> 8); F = (byte)(val & 0xFF); }" : $"{qq[i]} = Pop()";
-            baseInstructions.Add(new Instruction((byte)(0xC1 | (i << 4)), $"POP {qq[i]}", popAction, new[] { 4, 3, 3 }));
+            string reg = qq[i];
+            string val = (reg == "AF") ? "((A << 8) | F)" : reg;
+            
+            // PUSH: M1(5) fetch+internal, M2(3) write hi, M3(3) write lo. Total 11.
+            baseInstructions.Add(new Instruction((byte)(0xC5 | (i << 4)), $"PUSH {reg}", 
+                new[] { "ushort v = (ushort)(" + val + ")", "SP--; _bus.Write(SP, (byte)(v >> 8))", "SP--; _bus.Write(SP, (byte)(v & 0xFF))" }, 
+                new[] { 5, 3, 3 }));
+
+            string popSet = (reg == "AF") ? "A = hi; F = lo" : reg + " = (ushort)((hi << 8) | lo)";
+            
+            // POP: M1(4), M2(3) read lo, M3(3) read hi. Total 10.
+            baseInstructions.Add(new Instruction((byte)(0xC1 | (i << 4)), $"POP {reg}", 
+                new[] { "", "byte lo = _bus.Read(SP); SP++", "byte hi = _bus.Read(SP); SP++; " + popSet }, 
+                new[] { 4, 3, 3 }));
         }
 
         for (int t = 0; t < 8; t++) baseInstructions.Add(new Instruction((byte)(0xC7 | (t << 3)), $"RST {t * 8:X2}h", $"{{ Push(PC); PC = 0x{t * 8:X2}; }}", new[] { 4, 3, 4 }));
@@ -82,8 +130,8 @@ class Program
         baseInstructions.Add(new Instruction(0x18, "JR e", "{ sbyte e = (sbyte)Fetch(); PC = (ushort)(PC + e); }", new[] { 4, 3, 5 }));
         baseInstructions.Add(new Instruction(0xCD, "CALL nn", "{ ushort nn = FetchWord(); Push(PC); PC = nn; }", new[] { 4, 3, 3, 3, 4 }));
         baseInstructions.Add(new Instruction(0xC9, "RET", "PC = Pop()", new[] { 4, 3, 3 }));
-        baseInstructions.Add(new Instruction(0x08, "EX AF, AF'", "EX_AF_AF()", new int[0]));
-        baseInstructions.Add(new Instruction(0xD9, "EXX", "EXX()", new int[0]));
+        baseInstructions.Add(new Instruction(0x08, "EX AF, AF'", "EX_AF_AF()", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0xD9, "EXX", "EXX()", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xEB, "EX DE, HL", "(DE, HL) = (HL, DE)", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xE3, "EX (SP), HL", "{ ushort tmp = HL; HL = ReadWord(SP); WriteWord(SP, tmp); }", new[] { 4, 3, 4, 3, 5 }));
         baseInstructions.Add(new Instruction(0xF3, "DI", "IFF1 = IFF2 = false", new[] { 4 }));
@@ -116,15 +164,25 @@ class Program
 
         // --- ED Instructions ---
         for (int i = 0; i < 4; i++) {
-            edInstructions.Add(new Instruction((byte)(0x4A | (i << 4)), $"ADC HL, {dd[i]}", $"DoAdc16({dd[i]})", new int[0]));
-            edInstructions.Add(new Instruction((byte)(0x42 | (i << 4)), $"SBC HL, {dd[i]}", $"DoSbc16({dd[i]})", new int[0]));
+            edInstructions.Add(new Instruction((byte)(0x4A | (i << 4)), $"ADC HL, {dd[i]}", 
+                new[] { "", "DoAdc16(" + dd[i] + ")" }, new[] { 4, 4, 4, 3 })); // 15 total
+            edInstructions.Add(new Instruction((byte)(0x42 | (i << 4)), $"SBC HL, {dd[i]}", 
+                new[] { "", "DoSbc16(" + dd[i] + ")" }, new[] { 4, 4, 4, 3 })); // 15 total
         }
-        edInstructions.Add(new Instruction(0x67, "RRD", "{ RRD(); WZ = (ushort)(HL + 1); }", new int[0]));
-        edInstructions.Add(new Instruction(0x6F, "RLD", "{ RLD(); WZ = (ushort)(HL + 1); }", new int[0]));
+        edInstructions.Add(new Instruction(0x67, "RRD", 
+            new[] { "", "byte tmp = _bus.Read(HL); _bus.Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
+            new[] { 4, 4, 3, 4, 3 })); // 18 total
+        edInstructions.Add(new Instruction(0x6F, "RLD", 
+            new[] { "", "byte tmp = _bus.Read(HL); _bus.Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
+            new[] { 4, 4, 3, 4, 3 })); // 18 total
         for (int i = 0; i < 3; i++) {
             if (i == 2) continue; // SP handle separately
-            edInstructions.Add(new Instruction((byte)(0x4B | (i << 4)), $"LD {dd[i]}, (nn)", $"{dd[i]} = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
-            edInstructions.Add(new Instruction((byte)(0x43 | (i << 4)), $"LD (nn), {dd[i]}", "WriteWord(FetchWord(), " + dd[i] + ")", new[] { 4, 4, 3, 3, 3, 3 }));
+            edInstructions.Add(new Instruction((byte)(0x4B | (i << 4)), $"LD {dd[i]}, (nn)", 
+                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"byte valLo = _bus.Read(nn)", $"byte valHi = _bus.Read((ushort)(nn + 1)); {dd[i]} = (ushort)(valLo | (valHi << 8))" }, 
+                new[] { 4, 4, 3, 3, 3, 3 }));
+            edInstructions.Add(new Instruction((byte)(0x43 | (i << 4)), $"LD (nn), {dd[i]}", 
+                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"_bus.Write(nn, (byte)({dd[i]} & 0xFF))", $"_bus.Write((ushort)(nn + 1), (byte)({dd[i]} >> 8))" }, 
+                new[] { 4, 4, 3, 3, 3, 3 }));
         }
         edInstructions.Add(new Instruction(0x7B, "LD SP, (nn)", "SP = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
         edInstructions.Add(new Instruction(0x73, "LD (nn), SP", "WriteWord(FetchWord(), SP)", new[] { 4, 4, 3, 3, 3, 3 }));
@@ -133,59 +191,60 @@ class Program
         edInstructions.Add(new Instruction(0x63, "LD (nn), HL", "WriteWord(FetchWord(), HL)", new[] { 4, 4, 3, 3, 3, 3 }));
         edInstructions.Add(new Instruction(0x6B, "LD HL, (nn)", "HL = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
 
-        edInstructions.Add(new Instruction(0x47, "LD I, A", "I = A", new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x4F, "LD R, A", "R = A", new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x57, "LD A, I", "{ A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; }", new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x5F, "LD A, R", "{ A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; }", new[] { 4, 5 }));
+        edInstructions.Add(new Instruction(0x47, "LD I, A", new[] { "", "I = A" }, new[] { 4, 5 }));
+        edInstructions.Add(new Instruction(0x4F, "LD R, A", new[] { "", "R = A" }, new[] { 4, 5 }));
+        edInstructions.Add(new Instruction(0x57, "LD A, I", new[] { "", "A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 4, 5 }));
+        edInstructions.Add(new Instruction(0x5F, "LD A, R", new[] { "", "A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 4, 5 }));
 
-        edInstructions.Add(new Instruction(0x46, "IM 0", "_interruptMode = 0", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x56, "IM 1", "_interruptMode = 1", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x5E, "IM 2", "_interruptMode = 2", new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x46, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x56, "IM 1", new[] { "", "_interruptMode = 1" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x5E, "IM 2", new[] { "", "_interruptMode = 2" }, new[] { 4, 4 }));
         // IM aliases
-        edInstructions.Add(new Instruction(0x4E, "IM 0", "_interruptMode = 0", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x66, "IM 0", "_interruptMode = 0", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x6E, "IM 0", "_interruptMode = 0", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x76, "IM 1", "_interruptMode = 1", new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x7E, "IM 2", "_interruptMode = 2", new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x4E, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x66, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x6E, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x76, "IM 1", new[] { "", "_interruptMode = 1" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x7E, "IM 2", new[] { "", "_interruptMode = 2" }, new[] { 4, 4 }));
 
-        edInstructions.Add(new Instruction(0x44, "NEG", "NEG()", new int[0]));
+        edInstructions.Add(new Instruction(0x44, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
         // NEG aliases
-        for (byte op = 0x4C; op <= 0x7C; op += 0x08) edInstructions.Add(new Instruction(op, "NEG", "NEG()", new int[0]));
-        edInstructions.Add(new Instruction(0x54, "NEG", "NEG()", new int[0]));
-        edInstructions.Add(new Instruction(0x64, "NEG", "NEG()", new int[0]));
-        edInstructions.Add(new Instruction(0x74, "NEG", "NEG()", new int[0]));
+        for (byte op = 0x4C; op <= 0x7C; op += 0x08) edInstructions.Add(new Instruction(op, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
+        foreach (byte op in new byte[] { 0x54, 0x64, 0x74 }) edInstructions.Add(new Instruction(op, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
 
-        edInstructions.Add(new Instruction(0x4D, "RETI", "RETI()", new int[0]));
-        edInstructions.Add(new Instruction(0x45, "RETN", "RETN()", new int[0]));
+        edInstructions.Add(new Instruction(0x4D, "RETI", new[] { "", "RETI()" }, new[] { 4, 4, 3, 3 })); // 14 total
+        edInstructions.Add(new Instruction(0x45, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 })); // 14 total
         // RETN aliases
-        for (byte op = 0x55; op <= 0x7D; op += 0x08) edInstructions.Add(new Instruction(op, "RETN", "RETN()", new int[0]));
-        edInstructions.Add(new Instruction(0x5D, "RETN", "RETN()", new int[0]));
-        edInstructions.Add(new Instruction(0x6D, "RETN", "RETN()", new int[0]));
-        edInstructions.Add(new Instruction(0x7D, "RETN", "RETN()", new int[0]));
+        for (byte op = 0x55; op <= 0x7D; op += 0x08) edInstructions.Add(new Instruction(op, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 }));
+        foreach (byte op in new byte[] { 0x5D, 0x6D, 0x7D }) edInstructions.Add(new Instruction(op, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 }));
 
         for (int r = 0; r < 8; r++) {
             edInstructions.Add(new Instruction((byte)(0x40 | (r << 3)), $"IN {regs[r]}, (C)", 
-                "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }", new[] { 4, 4, 4 }));
+                new[] { "", "", "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }" }, 
+                new[] { 4, 4, 4 })); // 12 total
             edInstructions.Add(new Instruction((byte)(0x41 | (r << 3)), $"OUT (C), {regs[r]}", 
-                "{ byte val = " + (r == 6 ? "(byte)0" : regs[r]) + "; _ports?.Out(BC, val); }", new[] { 4, 4, 4 }));
+                new[] { "", "", "{ byte val = " + (r == 6 ? "(byte)0" : regs[r]) + "; _ports?.Out(BC, val); }" }, 
+                new[] { 4, 4, 4 })); // 12 total
         }
 
-        edInstructions.Add(new Instruction(0xA0, "LDI", "LDI()", new int[0]));
-        edInstructions.Add(new Instruction(0xA1, "CPI", "CPI()", new int[0]));
-        edInstructions.Add(new Instruction(0xA8, "LDD", "LDD()", new int[0]));
-        edInstructions.Add(new Instruction(0xA9, "CPD", "CPD()", new int[0]));
-        edInstructions.Add(new Instruction(0xB0, "LDIR", "LDIR()", new int[0]));
-        edInstructions.Add(new Instruction(0xB1, "CPIR", "CPIR()", new int[0]));
-        edInstructions.Add(new Instruction(0xB8, "LDDR", "LDDR()", new int[0]));
-        edInstructions.Add(new Instruction(0xB9, "CPDR", "CPDR()", new int[0]));
-        edInstructions.Add(new Instruction(0xA2, "INI", "INI()", new int[0]));
-        edInstructions.Add(new Instruction(0xAA, "IND", "IND()", new int[0]));
-        edInstructions.Add(new Instruction(0xA3, "OUTI", "OUTI()", new int[0]));
-        edInstructions.Add(new Instruction(0xAB, "OUTD", "OUTD()", new int[0]));
-        edInstructions.Add(new Instruction(0xB2, "INIR", "INIR()", new int[0]));
-        edInstructions.Add(new Instruction(0xBA, "INDR", "INDR()", new int[0]));
-        edInstructions.Add(new Instruction(0xB3, "OTIR", "OTIR()", new int[0]));
-        edInstructions.Add(new Instruction(0xBB, "OTDR", "OTDR()", new int[0]));
+        edInstructions.Add(new Instruction(0xA0, "LDI", new[] { "", "", "LDI()" }, new[] { 4, 4, 3, 3, 2 })); // 16 total
+        edInstructions.Add(new Instruction(0xA1, "CPI", new[] { "", "", "CPI()" }, new[] { 4, 4, 3, 5 })); // 16 total
+        edInstructions.Add(new Instruction(0xA8, "LDD", new[] { "", "", "LDD()" }, new[] { 4, 4, 3, 3, 2 })); 
+        edInstructions.Add(new Instruction(0xA9, "CPD", new[] { "", "", "CPD()" }, new[] { 4, 4, 3, 5 }));
+        
+        edInstructions.Add(new Instruction(0xB0, "LDIR", new[] { "", "", "LDI(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 3, 2 }));
+        edInstructions.Add(new Instruction(0xB1, "CPIR", new[] { "", "", "CPI(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB8, "LDDR", new[] { "", "", "LDD(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 3, 2 }));
+        edInstructions.Add(new Instruction(0xB9, "CPDR", new[] { "", "", "CPD(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+
+        edInstructions.Add(new Instruction(0xA2, "INI", new[] { "", "", "INI()" }, new[] { 4, 4, 3, 5 })); 
+        edInstructions.Add(new Instruction(0xAA, "IND", new[] { "", "", "IND()" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xA3, "OUTI", new[] { "", "", "OUTI()" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xAB, "OUTD", new[] { "", "", "OUTD()" }, new[] { 4, 4, 3, 5 }));
+        
+        edInstructions.Add(new Instruction(0xB2, "INIR", new[] { "", "", "INI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xBA, "INDR", new[] { "", "", "IND(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB3, "OTIR", new[] { "", "", "OUTI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xBB, "OTDR", new[] { "", "", "OUTD(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
 
         // Generate the file
         var sb = new StringBuilder();
@@ -271,34 +330,29 @@ class Program
     }
 
     static void GenerateCase(StringBuilder sb, Instruction inst) {
-        sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ ");
+        sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ {{ ");
         
-        string action = inst.Action;
-        string? wzAction = inst.WzAction;
-
-        if (!string.IsNullOrEmpty(wzAction)) {
-            if (action.StartsWith("{") && action.EndsWith("}")) {
-                action = action.Substring(0, action.Length - 1) + " " + wzAction + "; }";
-                wzAction = null;
-            }
-        }
-
         if (inst.Cycles.Length == 0) {
-            sb.Append($"{action}; ");
-            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
-            sb.AppendLine("break;");
-        } else if (inst.Cycles.Length == 1) {
-            sb.Append($"Tick({inst.Cycles[0]}); {action}; ");
-            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
-            sb.AppendLine("break;");
-        } else {
-            sb.Append($"Tick({inst.Cycles[0]}); ");
-            sb.Append($"{action}; ");
-            if (!string.IsNullOrEmpty(wzAction)) sb.Append($"{wzAction}; ");
-            for (int i = 1; i < inst.Cycles.Length; i++) {
-                sb.Append($"Tick({inst.Cycles[i]}); ");
+            foreach (var action in inst.Actions) {
+                if (!string.IsNullOrEmpty(action)) sb.Append($"{action}; ");
             }
-            sb.AppendLine("break;");
+            sb.AppendLine("} break;");
+            return;
         }
+
+        for (int i = 0; i < inst.Cycles.Length; i++) {
+            sb.Append($"Tick({inst.Cycles[i]}); ");
+            
+            // For single-action instructions (legacy), execute action after the first Tick.
+            // For multi-action instructions, execute actions interleaved.
+            if (inst.Actions.Length == 1) {
+                if (i == 0 && !string.IsNullOrEmpty(inst.Actions[0])) {
+                    sb.Append($"{inst.Actions[0]}; ");
+                }
+            } else if (i < inst.Actions.Length && !string.IsNullOrEmpty(inst.Actions[i])) {
+                sb.Append($"{inst.Actions[i]}; ");
+            }
+        }
+        sb.AppendLine("} break;");
     }
 }
