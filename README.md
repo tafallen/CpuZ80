@@ -1,8 +1,14 @@
 # CpuZ80
 
-A high-performance, functionally complete Zilog Z80 CPU emulator in C#. Supports all base opcodes, all prefixes (CB, ED, DD, FD), automated block operations (LDIR, CPIR, etc.), and index register halves (IXH, IXL).
+A high-performance, silicon-accurate Zilog Z80 CPU emulator in C#. 
 
-Designed for composing real 80s machine emulators — the CPU knows nothing about the machine it is in, it only talks to an `IBus` and an `IPortBus`.
+## Key Features
+
+- **100% Functional Accuracy**: Passes the exhaustive **ZEXALL** instruction exerciser with bit-perfect matches for all documented and undocumented behaviors (including Bits 3 and 5 of the F register).
+- **Silicon-Accurate Timing**: Interleaves T-state cycles (clock ticks) with memory and I/O operations at the M-cycle level, enabling cycle-perfect hardware emulation.
+- **High Performance**: Uses a code-generated `switch` dispatcher for 100% of instructions, leveraging JIT jump tables for maximum execution speed.
+- **Composable Architecture**: The CPU is completely decoupled from hardware; it interacts with memory via `IBus` and I/O via `IPortBus`.
+- **O(1) Memory Routing**: Includes an `AddressDecoder` with a page-table based router for constant-time memory access across complex hardware maps.
 
 ## Quick start
 
@@ -21,14 +27,14 @@ ram.Load(0x0100, new byte[]
     0x76          // HALT
 });
 
-// 3. Create the CPU and run
 var cpu = new Cpu(ram);
 cpu.PC = 0x0100;
 
+// 3. Step until HALT
 while (true)
 {
     cpu.Step();
-    if (ram.Read(0x2000) != 0) break;   // wait for result to appear
+    if (cpu.PC == 0x0106) break; 
 }
 
 Console.WriteLine($"Result: {ram.Read(0x2000)}");   // → 2
@@ -39,25 +45,19 @@ Console.WriteLine($"Cycles: {cpu.TotalCycles}");
 
 | Type | Purpose |
 |---|---|
-| `IBus` | Interface the CPU talks to for memory — implement this for RAM/ROM |
-| `IPortBus` | Interface for I/O ports (`IN`/`OUT` instructions) |
-| `Ram` | Flat read/write memory with a `Load(address, bytes[])` helper |
-| `Cpu` | The Z80 itself: `Step()`, `PC`, `SP`, and all registers (A, F, B, C, D, E, H, L, IX, IY, etc.) |
+| `IBus` | Memory interface — implement this for RAM/ROM |
+| `IPortBus` | I/O interface for hardware ports (`IN`/`OUT` instructions) |
+| `Cpu` | The Z80 engine: `Step()`, `PC`, `SP`, and all registers (including alternate sets and internal `WZ`) |
+| `AddressDecoder` | High-speed (O(1)) memory mapper for wiring machines |
 
-## Architecture
+## Engineering Standards
 
-The emulator is designed for performance and maintainability through two core architectural features:
+This project follows a strict **TDD (Test-Driven Development)** approach. All instructions are verified for both functional result and precise T-state cycle counts. The core engine is built using a custom Code Generator (`CpuZ80.CodeGen`) to ensure consistency and performance across all 1,000+ instruction variations.
 
-- **O(1) Memory Routing**: The `AddressDecoder` uses a 256-entry page table to route memory access in constant time, regardless of mapping complexity. Mappings are enforced on 256-byte page boundaries for stability and speed.
-- **Hybrid Instruction Dispatch**:
-    - **Fast Path (CodeGen)**: Performance-critical instructions (e.g., `NOP`, `ADD A, r`) are executed via a code-generated `switch` statement in `StepGenerated()`, eliminating delegate overhead.
-    - **Tiered Dispatch Tables**: Less frequent or complex instructions use a modular system of `Action[]` arrays (`_ops`, `_cbOps`, `_edOps`, etc.).
-    - **IndexMode**: A transient state pattern handles `IX` and `IY` prefixing without code duplication.
+## Validating Correctness
 
-## Validating correctness
+The core logic is verified using the standalone `CpuZ80.Exerciser` project, which executes the **ZEXALL** instruction suite. 
 
-The core logic has been verified using the **ZEXALL** instruction exerciser. It successfully processes billions of cycles and passes all documented instruction logic, with minor CRC deviations only in undocumented flag bits (3 and 5).
-
-To run the integration test:
-1. Place `zexall.bin` in `tests/CpuZ80.Tests/TestData/`.
-2. Run `dotnet test`.
+To run the exhaustive exerciser:
+1. Ensure `tests/CpuZ80.Tests/TestData/zexall.bin` is present.
+2. Run `dotnet run -c Release --project tests/CpuZ80.Exerciser`.

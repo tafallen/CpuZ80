@@ -92,7 +92,10 @@ cpu.FlagPV // Parity / Overflow
 cpu.FlagN // Add/Sub
 cpu.FlagH // Half-Carry
 
-// Alternate registers are private, accessed via exchange opcodes:
+// Alternate registers are public for precision testing and CodeGen:
+cpu.A_, cpu.F_, cpu.B_, cpu.C_, cpu.D_, cpu.E_, cpu.H_, cpu.L_
+
+// Exchange opcodes manipulate them:
 // 0x08: EX AF, AF'
 // 0xD9: EXX
 ```
