@@ -58,8 +58,8 @@ public sealed partial class Cpu
     public ushort DE { get => (ushort)((D << 8) | E); set { D = (byte)(value >> 8); E = (byte)value; } }
     public ushort HL { get => (ushort)((H << 8) | L); set { H = (byte)(value >> 8); L = (byte)value; } }
 
-    public ushort PC { get; internal set; }
-    public ushort SP { get; internal set; }
+    public ushort PC { get; set; }
+    public ushort SP { get; set; }
     public ushort WZ; // Internal temporary register (MEMPTR)
 
     public ulong TotalCycles { get; private set; }

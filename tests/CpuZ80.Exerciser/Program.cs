@@ -1,15 +1,10 @@
 using CpuZ80.Core;
-using Xunit;
-using Xunit.Abstractions;
 using System.Text;
 
-namespace CpuZ80.Tests;
+namespace CpuZ80.Exerciser;
 
-public class IntegrationTests
+public class Program
 {
-    private readonly ITestOutputHelper _output;
-    public IntegrationTests(ITestOutputHelper output) => _output = output;
-
     private const string BinPath = "TestData/zexall.bin";
     private const ushort OrgAddress = 0x0100; 
     private const long MaxSteps = 10_000_000_000;
@@ -26,20 +21,23 @@ public class IntegrationTests
         }
     }
 
-    [Fact]
-    public void ZexAll_FunctionalTest_RunsToCompletion()
+    public static void Main(string[] args)
     {
-        string actualPath = BinPath;
+        string actualPath = args.Length > 0 ? args[0] : Path.Combine(AppDomain.CurrentDomain.BaseDirectory, BinPath);
+        
         if (!File.Exists(actualPath))
         {
-            actualPath = Path.Combine("..", "..", "..", BinPath);
+             actualPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "zexall.bin");
         }
 
         if (!File.Exists(actualPath))
         {
-            Assert.Fail($"ZEXALL binary not found at {Path.GetFullPath(actualPath)}");
+            Console.WriteLine($"Error: ZEXALL binary not found. Tried: {actualPath}");
+            Console.WriteLine($"Base Directory: {AppDomain.CurrentDomain.BaseDirectory}");
+            return;
         }
 
+        Console.WriteLine($"Loading {actualPath}...");
         byte[] program = File.ReadAllBytes(actualPath);
         var bus = new CpmBus();
         Array.Copy(program, 0, bus.Data, OrgAddress, program.Length);
@@ -52,33 +50,49 @@ public class IntegrationTests
         cpu.PC = OrgAddress;
 
         int lastOutputLen = 0;
+        Console.WriteLine("Starting ZEXALL functional test...");
+        
         for (long i = 0; i < MaxSteps; i++)
         {
             if (cpu.PC == 0x0005) HandleBdos(cpu, bus);
 
-            if (i % 50_000_000 == 0) _output.WriteLine($"Step {i}, PC: {cpu.PC:X4}");
+            if (i % 50_000_000 == 0) 
+            {
+                Console.WriteLine($"Step {i / 1_000_000}M, PC: {cpu.PC:X4}");
+            }
 
             cpu.Step();
 
             if (bus.Output.Length > lastOutputLen)
             {
                 var newContent = bus.Output.ToString().Substring(lastOutputLen);
-                _output.WriteLine(newContent);
+                Console.Write(newContent);
                 lastOutputLen = bus.Output.Length;
             }
 
             if (cpu.PC == 0x0000)
             {
+                Console.WriteLine("\nZEXALL completed.");
                 var finalOutput = bus.Output.ToString();
-                Assert.DoesNotContain("ERROR", finalOutput);
+                if (finalOutput.Contains("ERROR"))
+                {
+                    Console.WriteLine("FAILURES DETECTED!");
+                    Environment.Exit(1);
+                }
+                else
+                {
+                    Console.WriteLine("SUCCESS!");
+                    Environment.Exit(0);
+                }
                 return;
             }
         }
 
-        Assert.Fail($"Timed out or trapped. Output: {bus.Output.ToString()}");
+        Console.WriteLine($"\nTimed out or trapped. Output: {bus.Output.ToString()}");
+        Environment.Exit(1);
     }
 
-    private void HandleBdos(Cpu cpu, CpmBus bus)
+    private static void HandleBdos(Cpu cpu, CpmBus bus)
     {
         byte function = cpu.C;
         if (function == 2) // C_WRITE
