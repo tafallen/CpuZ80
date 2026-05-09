@@ -19,7 +19,7 @@ public sealed partial class Cpu
         
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private byte DoInc(byte val)
@@ -31,7 +31,7 @@ public sealed partial class Cpu
         FlagPV = val == 0x7F;
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
-        F = (byte)((F & ~0x28) | (res & 0x28));
+        SetUndocumentedFlags(res);
         
         return res;
     }
@@ -45,7 +45,7 @@ public sealed partial class Cpu
         FlagPV = val == 0x80;
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
-        F = (byte)((F & ~0x28) | (res & 0x28));
+        SetUndocumentedFlags(res);
         
         return res;
     }
@@ -67,7 +67,7 @@ public sealed partial class Cpu
         
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private void DoAdd16(ushort val)
@@ -82,7 +82,7 @@ public sealed partial class Cpu
         ushort result = (ushort)(res & 0xFFFF);
         SetReg16(2, result);
         WZ = (ushort)(cur + 1);
-        F = (byte)((F & ~0x28) | ((result >> 8) & 0x28));
+        SetUndocumentedFlags((byte)(result >> 8));
         Tick(11);
     }
 
@@ -118,13 +118,19 @@ public sealed partial class Cpu
         byte oldA = A;
         SubInternal(val, false);
         A = oldA;
-        F = (byte)((F & ~0x28) | (val & 0x28)); // X/Y flags come from operand, not result
+        SetUndocumentedFlags(val); // X/Y flags come from operand, not result
     }
 
     internal void SetUndocumentedFlagsFromWZ()
     {
         // Bits 11 and 13 of WZ leak into bits 3 and 5 of F
-        F = (byte)((F & ~0x28) | ((WZ >> 8) & 0x28));
+        SetUndocumentedFlags((byte)(WZ >> 8));
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    internal void SetUndocumentedFlags(byte source)
+    {
+        F = (byte)((F & ~0x28) | (source & 0x28));
     }
 
     private void SetLogicFlags(byte res)
@@ -132,7 +138,7 @@ public sealed partial class Cpu
         FlagZ = res == 0;
         FlagS = (res & 0x80) != 0;
         FlagPV = GetParity(res);
-        F = (byte)((F & ~0x28) | (res & 0x28));
+        SetUndocumentedFlags(res);
     }
 
     private bool GetParity(byte val)
@@ -149,7 +155,7 @@ public sealed partial class Cpu
         A = (byte)((A << 1) | (FlagC ? 1 : 0));
         FlagN = false;
         FlagH = false;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private void RRCA()
@@ -158,7 +164,7 @@ public sealed partial class Cpu
         A = (byte)((A >> 1) | (FlagC ? 0x80 : 0));
         FlagN = false;
         FlagH = false;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private void RLA()
@@ -168,7 +174,7 @@ public sealed partial class Cpu
         A = (byte)((A << 1) | (oldC ? 1 : 0));
         FlagN = false;
         FlagH = false;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private void RRA()
@@ -178,7 +184,7 @@ public sealed partial class Cpu
         A = (byte)((A >> 1) | (oldC ? 0x80 : 0));
         FlagN = false;
         FlagH = false;
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 
     private void DAA()
@@ -206,7 +212,7 @@ public sealed partial class Cpu
         FlagZ = A == 0;
         FlagS = (A & 0x80) != 0;
         FlagPV = GetParity(A);
-        F = (byte)((F & ~0x28) | (A & 0x28));
+        SetUndocumentedFlags(A);
     }
 }
 

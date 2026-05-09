@@ -89,9 +89,9 @@ class Program
         baseInstructions.Add(new Instruction(0xF3, "DI", "IFF1 = IFF2 = false", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xFB, "EI", "IFF1 = IFF2 = true; _eiDelay = true;", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x27, "DAA", "DAA()", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x2F, "CPL", "A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x37, "SCF", "FlagC = true; FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
-        baseInstructions.Add(new Instruction(0x3F, "CCF", "FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28));", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x2F, "CPL", "A = (byte)~A; FlagN = true; FlagH = true; SetUndocumentedFlags(A);", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x37, "SCF", "FlagC = true; FlagN = false; FlagH = false; SetUndocumentedFlags(A);", new[] { 4 }));
+        baseInstructions.Add(new Instruction(0x3F, "CCF", "FlagH = FlagC; FlagC = !FlagC; FlagN = false; SetUndocumentedFlags(A);", new[] { 4 }));
         baseInstructions.Add(new Instruction(0xF9, "LD SP, HL", "SP = HL", new[] { 6 }));
         baseInstructions.Add(new Instruction(0xE9, "JP (HL)", "PC = HL", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x76, "HALT", "{ _halted = true; PC--; }", new[] { 4 }));
@@ -165,7 +165,7 @@ class Program
 
         for (int r = 0; r < 8; r++) {
             edInstructions.Add(new Instruction((byte)(0x40 | (r << 3)), $"IN {regs[r]}, (C)", 
-                "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }", new[] { 4, 4, 4 }));
+                "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }", new[] { 4, 4, 4 }));
             edInstructions.Add(new Instruction((byte)(0x41 | (r << 3)), $"OUT (C), {regs[r]}", 
                 "{ byte val = " + (r == 6 ? "(byte)0" : regs[r]) + "; _ports?.Out(BC, val); }", new[] { 4, 4, 4 }));
         }

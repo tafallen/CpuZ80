@@ -92,7 +92,7 @@ public sealed partial class Cpu
                 FlagH = false;
                 FlagPV = GetParity(val);
                 FlagN = false;
-                F = (byte)((F & ~0x28) | (val & 0x28));
+                SetUndocumentedFlags(val);
                 WZ = (ushort)(BC + 1);
                 Tick(12);
             };
@@ -142,7 +142,7 @@ public sealed partial class Cpu
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
         WZ = (ushort)(oldHl + 1);
-        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
+        SetUndocumentedFlags((byte)(HL >> 8));
         Tick(15);
     }
 
@@ -162,7 +162,7 @@ public sealed partial class Cpu
         FlagZ = HL == 0;
         FlagS = (HL & 0x8000) != 0;
         WZ = (ushort)(oldHl + 1);
-        F = (byte)((F & ~0x28) | ((HL >> 8) & 0x28));
+        SetUndocumentedFlags((byte)(HL >> 8));
         Tick(15);
     }
 

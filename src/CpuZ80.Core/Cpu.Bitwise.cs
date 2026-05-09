@@ -92,7 +92,7 @@ public sealed partial class Cpu
         FlagPV = FlagZ;
         FlagS = bit == 7 && !FlagZ;
         // Zilog Z80: bits 3 and 5 are copies of bits 3 and 5 of the tested register (operand)
-        F = (byte)((F & ~0x28) | (val & 0x28));
+        SetUndocumentedFlags(val);
     }
 
     private void HandleCB()

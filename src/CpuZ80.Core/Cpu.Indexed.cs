@@ -132,7 +132,7 @@ public sealed partial class Cpu
         FlagC = (res & 0x10000) != 0;
         reg = (ushort)(res & 0xFFFF);
         WZ = (ushort)(oldReg + 1); // Rule for ADD INDEX, rp
-        F = (byte)((F & ~0x28) | ((reg >> 8) & 0x28));
+        SetUndocumentedFlags((byte)(reg >> 8));
         Tick(11);
     }
 

@@ -57,7 +57,7 @@ public sealed partial class Cpu
             case 0x2C: /* INC L */ Tick(4); L = DoInc(L); break;
             case 0x2D: /* DEC L */ Tick(4); L = DoDec(L); break;
             case 0x2E: /* LD L, n */ Tick(4); L = Fetch(); Tick(3); break;
-            case 0x2F: /* CPL */ Tick(4); A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28));; break;
+            case 0x2F: /* CPL */ Tick(4); A = (byte)~A; FlagN = true; FlagH = true; SetUndocumentedFlags(A);; break;
             case 0x30: /* JR NC, e */ Tick(4); { sbyte e = (sbyte)Fetch(); if (!FlagC) { PC = (ushort)(PC + e); Tick(5); } }; Tick(3); break;
             case 0x31: /* LD SP, nn */ Tick(4); SP = FetchWord(); Tick(3); Tick(3); break;
             case 0x32: /* LD (nn), A */ Tick(4); { ushort nn = FetchWord(); _bus.Write(nn, A);  WZ = (ushort)((A << 8) | ((nn + 1) & 0xFF)); }; Tick(3); Tick(3); Tick(3); break;
@@ -65,7 +65,7 @@ public sealed partial class Cpu
             case 0x34: /* INC _bus.Read(HL) */ Tick(4); SetReg(6, DoInc(_bus.Read(HL))); Tick(3); Tick(4); break;
             case 0x35: /* DEC _bus.Read(HL) */ Tick(4); SetReg(6, DoDec(_bus.Read(HL))); Tick(3); Tick(4); break;
             case 0x36: /* LD _bus.Read(HL), n */ Tick(4); SetReg(6, Fetch()); Tick(3); Tick(3); break;
-            case 0x37: /* SCF */ Tick(4); FlagC = true; FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28));; break;
+            case 0x37: /* SCF */ Tick(4); FlagC = true; FlagN = false; FlagH = false; SetUndocumentedFlags(A);; break;
             case 0x38: /* JR C, e */ Tick(4); { sbyte e = (sbyte)Fetch(); if (FlagC) { PC = (ushort)(PC + e); Tick(5); } }; Tick(3); break;
             case 0x39: /* ADD HL, SP */ DoAdd16(SP); break;
             case 0x3A: /* LD A, (nn) */ Tick(4); { ushort nn = FetchWord(); A = _bus.Read(nn);  WZ = (ushort)(nn + 1); }; Tick(3); Tick(3); Tick(3); break;
@@ -73,7 +73,7 @@ public sealed partial class Cpu
             case 0x3C: /* INC A */ Tick(4); A = DoInc(A); break;
             case 0x3D: /* DEC A */ Tick(4); A = DoDec(A); break;
             case 0x3E: /* LD A, n */ Tick(4); A = Fetch(); Tick(3); break;
-            case 0x3F: /* CCF */ Tick(4); FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28));; break;
+            case 0x3F: /* CCF */ Tick(4); FlagH = FlagC; FlagC = !FlagC; FlagN = false; SetUndocumentedFlags(A);; break;
             case 0x40: /* LD B, B */ Tick(4); B = B; break;
             case 0x41: /* LD B, C */ Tick(4); B = C; break;
             case 0x42: /* LD B, D */ Tick(4); B = D; break;
@@ -540,7 +540,7 @@ public sealed partial class Cpu
         byte opcode = Fetch();
         switch (opcode)
         {
-            case 0x40: /* IN B, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (0 != 6) B = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x40: /* IN B, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (0 != 6) B = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x41: /* OUT (C), B */ Tick(4); { byte val = B; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x42: /* SBC HL, BC */ DoSbc16(BC); break;
             case 0x43: /* LD (nn), BC */ Tick(4); WriteWord(FetchWord(), BC); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -548,7 +548,7 @@ public sealed partial class Cpu
             case 0x45: /* RETN */ RETN(); break;
             case 0x46: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
             case 0x47: /* LD I, A */ Tick(4); I = A; Tick(5); break;
-            case 0x48: /* IN C, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (1 != 6) C = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x48: /* IN C, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (1 != 6) C = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x49: /* OUT (C), C */ Tick(4); { byte val = C; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x4A: /* ADC HL, BC */ DoAdc16(BC); break;
             case 0x4B: /* LD BC, (nn) */ Tick(4); BC = ReadWord(FetchWord()); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -556,7 +556,7 @@ public sealed partial class Cpu
             case 0x4D: /* RETI */ RETI(); break;
             case 0x4E: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
             case 0x4F: /* LD R, A */ Tick(4); R = A; Tick(5); break;
-            case 0x50: /* IN D, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (2 != 6) D = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x50: /* IN D, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (2 != 6) D = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x51: /* OUT (C), D */ Tick(4); { byte val = D; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x52: /* SBC HL, DE */ DoSbc16(DE); break;
             case 0x53: /* LD (nn), DE */ Tick(4); WriteWord(FetchWord(), DE); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -564,7 +564,7 @@ public sealed partial class Cpu
             case 0x55: /* RETN */ RETN(); break;
             case 0x56: /* IM 1 */ Tick(4); _interruptMode = 1; Tick(4); break;
             case 0x57: /* LD A, I */ Tick(4); { A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; }; Tick(5); break;
-            case 0x58: /* IN E, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (3 != 6) E = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x58: /* IN E, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (3 != 6) E = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x59: /* OUT (C), E */ Tick(4); { byte val = E; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x5A: /* ADC HL, DE */ DoAdc16(DE); break;
             case 0x5B: /* LD DE, (nn) */ Tick(4); DE = ReadWord(FetchWord()); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -572,7 +572,7 @@ public sealed partial class Cpu
             case 0x5D: /* RETN */ RETN(); break;
             case 0x5E: /* IM 2 */ Tick(4); _interruptMode = 2; Tick(4); break;
             case 0x5F: /* LD A, R */ Tick(4); { A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false; }; Tick(5); break;
-            case 0x60: /* IN H, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (4 != 6) H = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x60: /* IN H, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (4 != 6) H = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x61: /* OUT (C), H */ Tick(4); { byte val = H; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x62: /* SBC HL, HL */ DoSbc16(HL); break;
             case 0x63: /* LD (nn), HL */ Tick(4); WriteWord(FetchWord(), HL); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -580,7 +580,7 @@ public sealed partial class Cpu
             case 0x65: /* RETN */ RETN(); break;
             case 0x66: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
             case 0x67: /* RRD */ { RRD(); WZ = (ushort)(HL + 1); }; break;
-            case 0x68: /* IN L, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (5 != 6) L = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x68: /* IN L, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (5 != 6) L = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x69: /* OUT (C), L */ Tick(4); { byte val = L; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x6A: /* ADC HL, HL */ DoAdc16(HL); break;
             case 0x6B: /* LD HL, (nn) */ Tick(4); HL = ReadWord(FetchWord()); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
@@ -588,14 +588,14 @@ public sealed partial class Cpu
             case 0x6D: /* RETN */ RETN(); break;
             case 0x6E: /* IM 0 */ Tick(4); _interruptMode = 0; Tick(4); break;
             case 0x6F: /* RLD */ { RLD(); WZ = (ushort)(HL + 1); }; break;
-            case 0x70: /* IN _bus.Read(HL), (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (6 != 6) SetReg(6, val); FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x70: /* IN _bus.Read(HL), (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (6 != 6) SetReg(6, val); FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x71: /* OUT (C), _bus.Read(HL) */ Tick(4); { byte val = (byte)0; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x72: /* SBC HL, SP */ DoSbc16(SP); break;
             case 0x73: /* LD (nn), SP */ Tick(4); WriteWord(FetchWord(), SP); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;
             case 0x74: /* NEG */ NEG(); break;
             case 0x75: /* RETN */ RETN(); break;
             case 0x76: /* IM 1 */ Tick(4); _interruptMode = 1; Tick(4); break;
-            case 0x78: /* IN A, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (7 != 6) A = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; F = (byte)((F & ~0x28) | (val & 0x28)); }; Tick(4); Tick(4); break;
+            case 0x78: /* IN A, (C) */ Tick(4); { byte val = _ports?.In(BC) ?? 0xFF; if (7 != 6) A = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; Tick(4); Tick(4); break;
             case 0x79: /* OUT (C), A */ Tick(4); { byte val = A; _ports?.Out(BC, val); }; Tick(4); Tick(4); break;
             case 0x7A: /* ADC HL, SP */ DoAdc16(SP); break;
             case 0x7B: /* LD SP, (nn) */ Tick(4); SP = ReadWord(FetchWord()); Tick(4); Tick(3); Tick(3); Tick(3); Tick(3); break;

@@ -116,9 +116,9 @@ public sealed partial class Cpu
 
         // Misc A
         _ops[0x27] = () => { DAA(); Tick(4); };
-        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
-        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
-        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; F = (byte)((F & ~0x28) | (A & 0x28)); Tick(4); };
+        _ops[0x2F] = () => { A = (byte)~A; FlagN = true; FlagH = true; SetUndocumentedFlags(A); Tick(4); };
+        _ops[0x37] = () => { FlagC = true;  FlagN = false; FlagH = false; SetUndocumentedFlags(A); Tick(4); };
+        _ops[0x3F] = () => { FlagH = FlagC; FlagC = !FlagC; FlagN = false; SetUndocumentedFlags(A); Tick(4); };
 
         // 8-bit Rotates (Base table)
         _ops[0x07] = () => { RLCA(); Tick(4); };
