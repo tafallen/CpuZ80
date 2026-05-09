@@ -20,8 +20,8 @@ public sealed partial class Cpu
         switch (_interruptMode)
         {
             case 0:
-                // Device places opcode on bus; treat as RST to the vector byte
-                _ops[_intDataBus]();
+                // Device places opcode on bus
+                StepGenerated(_intDataBus);
                 break;
             case 1:
                 Push(PC);

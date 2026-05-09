@@ -70,9 +70,8 @@ public sealed partial class Cpu
         SetUndocumentedFlags(A);
     }
 
-    private void DoAdd16(ushort val)
+    private ushort DoAdd16(ushort cur, ushort val)
     {
-        ushort cur = GetReg16(2);
         int res = cur + val;
 
         FlagN = false;
@@ -80,9 +79,9 @@ public sealed partial class Cpu
         FlagC = (res & 0x10000) != 0;
 
         ushort result = (ushort)(res & 0xFFFF);
-        SetReg16(2, result);
         WZ = (ushort)(cur + 1);
         SetUndocumentedFlags((byte)(result >> 8));
+        return result;
     }
 
     private void DoAnd(byte val)
@@ -212,6 +211,22 @@ public sealed partial class Cpu
         FlagS = (A & 0x80) != 0;
         FlagPV = GetParity(A);
         SetUndocumentedFlags(A);
+    }
+
+    public void EX_AF_AF()
+    {
+        (A, A_) = (A_, A);
+        (F, F_) = (F_, F);
+    }
+
+    public void EXX()
+    {
+        (B, B_) = (B_, B);
+        (C, C_) = (C_, C);
+        (D, D_) = (D_, D);
+        (E, E_) = (E_, E);
+        (H, H_) = (H_, H);
+        (L, L_) = (L_, L);
     }
 }
 

@@ -70,7 +70,7 @@ class Program
             new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", "A = _bus.Read(nn)" }, 
             new[] { 4, 3, 3, 3 }));
 
-        for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"DoAdd16({dd[i]})", new[] { 4, 4, 3 })); 
+        for (int i = 0; i < 4; i++) baseInstructions.Add(new Instruction((byte)(0x09 | (i << 4)), $"ADD HL, {dd[i]}", $"HL = DoAdd16(HL, {dd[i]})", new[] { 4, 4, 3 })); 
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x04 | (i << 3)), $"INC {regs[i]}", string.Format(regSetters[i], $"DoInc({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
         for (int i = 0; i < 8; i++) baseInstructions.Add(new Instruction((byte)(0x05 | (i << 3)), $"DEC {regs[i]}", string.Format(regSetters[i], $"DoDec({regs[i]})"), (i == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
 
@@ -151,100 +151,142 @@ class Program
         string[] shiftNames = { "RLC", "RRC", "RL", "RR", "SLA", "SRA", "SLL", "SRL" };
         for (int op = 0; op < 8; op++)
             for (int s = 0; s < 8; s++)
-                cbInstructions.Add(new Instruction((byte)(op << 3 | s), $"{shiftNames[op]} {regs[s]}", string.Format(regSetters[s], $"DoShift({op}, {regs[s]})"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
+                cbInstructions.Add(new Instruction((byte)(op << 3 | s), $"{shiftNames[op]} {regs[s]}", string.Format(regSetters[s], $"DoShift({op}, {regs[s]})"), (s == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
 
         for (int bit = 0; bit < 8; bit++)
             for (int s = 0; s < 8; s++) {
                 string bitAction = $"DoBit({bit}, {regs[s]})";
                 if (s == 6) bitAction = $"{{ WZ = HL; {bitAction}; SetUndocumentedFlagsFromWZ(); }}";
-                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", bitAction, (s == 6 ? new[] { 4, 4, 4 } : new[] { 4, 4 })));
-                cbInstructions.Add(new Instruction((byte)(0x80 | (bit << 3) | s), $"RES {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} & ~(1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
-                cbInstructions.Add(new Instruction((byte)(0xC0 | (bit << 3) | s), $"SET {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} | (1 << {bit}))"), (s == 6 ? new[] { 4, 4, 4, 3 } : new[] { 4, 4 })));
+                cbInstructions.Add(new Instruction((byte)(0x40 | (bit << 3) | s), $"BIT {bit}, {regs[s]}", bitAction, (s == 6 ? new[] { 4, 4 } : new[] { 4 })));
+                cbInstructions.Add(new Instruction((byte)(0x80 | (bit << 3) | s), $"RES {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} & ~(1 << {bit}))"), (s == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
+                cbInstructions.Add(new Instruction((byte)(0xC0 | (bit << 3) | s), $"SET {bit}, {regs[s]}", string.Format(regSetters[s], $" (byte)({regs[s]} | (1 << {bit}))"), (s == 6 ? new[] { 4, 3, 4 } : new[] { 4 })));
             }
 
         // --- ED Instructions ---
         for (int i = 0; i < 4; i++) {
             edInstructions.Add(new Instruction((byte)(0x4A | (i << 4)), $"ADC HL, {dd[i]}", 
-                new[] { "", "DoAdc16(" + dd[i] + ")" }, new[] { 4, 4, 4, 3 })); // 15 total
+                new[] { "", "HL = DoAdc16(HL, " + dd[i] + ")" }, new[] { 4, 4, 3 })); // 15 total (prefix excluded)
             edInstructions.Add(new Instruction((byte)(0x42 | (i << 4)), $"SBC HL, {dd[i]}", 
-                new[] { "", "DoSbc16(" + dd[i] + ")" }, new[] { 4, 4, 4, 3 })); // 15 total
+                new[] { "", "HL = DoSbc16(HL, " + dd[i] + ")" }, new[] { 4, 4, 3 })); // 15 total
         }
         edInstructions.Add(new Instruction(0x67, "RRD", 
             new[] { "", "byte tmp = _bus.Read(HL); _bus.Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
-            new[] { 4, 4, 3, 4, 3 })); // 18 total
+            new[] { 4, 3, 4, 3 })); // 18 total
         edInstructions.Add(new Instruction(0x6F, "RLD", 
             new[] { "", "byte tmp = _bus.Read(HL); _bus.Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
-            new[] { 4, 4, 3, 4, 3 })); // 18 total
+            new[] { 4, 3, 4, 3 })); // 18 total
         for (int i = 0; i < 3; i++) {
             if (i == 2) continue; // SP handle separately
             edInstructions.Add(new Instruction((byte)(0x4B | (i << 4)), $"LD {dd[i]}, (nn)", 
-                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"byte valLo = _bus.Read(nn)", $"byte valHi = _bus.Read((ushort)(nn + 1)); {dd[i]} = (ushort)(valLo | (valHi << 8))" }, 
-                new[] { 4, 4, 3, 3, 3, 3 }));
+                new[] { "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"byte valLo = _bus.Read(nn)", $"byte valHi = _bus.Read((ushort)(nn + 1)); {dd[i]} = (ushort)(valLo | (valHi << 8))" }, 
+                new[] { 4, 3, 3, 3, 3 })); // 20 total
             edInstructions.Add(new Instruction((byte)(0x43 | (i << 4)), $"LD (nn), {dd[i]}", 
-                new[] { "", "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"_bus.Write(nn, (byte)({dd[i]} & 0xFF))", $"_bus.Write((ushort)(nn + 1), (byte)({dd[i]} >> 8))" }, 
-                new[] { 4, 4, 3, 3, 3, 3 }));
+                new[] { "byte lo = Fetch()", "byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1)", $"_bus.Write(nn, (byte)({dd[i]} & 0xFF))", $"_bus.Write((ushort)(nn + 1), (byte)({dd[i]} >> 8))" }, 
+                new[] { 4, 3, 3, 3, 3 }));
         }
-        edInstructions.Add(new Instruction(0x7B, "LD SP, (nn)", "SP = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
-        edInstructions.Add(new Instruction(0x73, "LD (nn), SP", "WriteWord(FetchWord(), SP)", new[] { 4, 4, 3, 3, 3, 3 }));
+        edInstructions.Add(new Instruction(0x7B, "LD SP, (nn)", "SP = ReadWord(FetchWord())", new[] { 4, 3, 3, 3, 3 }));
+        edInstructions.Add(new Instruction(0x73, "LD (nn), SP", "WriteWord(FetchWord(), SP)", new[] { 4, 3, 3, 3, 3 }));
 
         // Undocumented LD (nn), HL duplicates
-        edInstructions.Add(new Instruction(0x63, "LD (nn), HL", "WriteWord(FetchWord(), HL)", new[] { 4, 4, 3, 3, 3, 3 }));
-        edInstructions.Add(new Instruction(0x6B, "LD HL, (nn)", "HL = ReadWord(FetchWord())", new[] { 4, 4, 3, 3, 3, 3 }));
+        edInstructions.Add(new Instruction(0x63, "LD (nn), HL", "WriteWord(FetchWord(), HL)", new[] { 4, 3, 3, 3, 3 }));
+        edInstructions.Add(new Instruction(0x6B, "LD HL, (nn)", "HL = ReadWord(FetchWord())", new[] { 4, 3, 3, 3, 3 }));
 
-        edInstructions.Add(new Instruction(0x47, "LD I, A", new[] { "", "I = A" }, new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x4F, "LD R, A", new[] { "", "R = A" }, new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x57, "LD A, I", new[] { "", "A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 4, 5 }));
-        edInstructions.Add(new Instruction(0x5F, "LD A, R", new[] { "", "A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 4, 5 }));
+        edInstructions.Add(new Instruction(0x47, "LD I, A", new[] { "I = A" }, new[] { 5 })); // 9 total
+        edInstructions.Add(new Instruction(0x4F, "LD R, A", new[] { "R = A" }, new[] { 5 }));
+        edInstructions.Add(new Instruction(0x57, "LD A, I", new[] { "A = I; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 5 }));
+        edInstructions.Add(new Instruction(0x5F, "LD A, R", new[] { "A = R; SetLogicFlags(A); FlagPV = IFF2; FlagN = false; FlagH = false" }, new[] { 5 }));
 
-        edInstructions.Add(new Instruction(0x46, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x56, "IM 1", new[] { "", "_interruptMode = 1" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x5E, "IM 2", new[] { "", "_interruptMode = 2" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x46, "IM 0", new[] { "_interruptMode = 0" }, new[] { 4 }));
+        edInstructions.Add(new Instruction(0x56, "IM 1", new[] { "_interruptMode = 1" }, new[] { 4 }));
+        edInstructions.Add(new Instruction(0x5E, "IM 2", new[] { "_interruptMode = 2" }, new[] { 4 }));
         // IM aliases
-        edInstructions.Add(new Instruction(0x4E, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x66, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x6E, "IM 0", new[] { "", "_interruptMode = 0" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x76, "IM 1", new[] { "", "_interruptMode = 1" }, new[] { 4, 4 }));
-        edInstructions.Add(new Instruction(0x7E, "IM 2", new[] { "", "_interruptMode = 2" }, new[] { 4, 4 }));
+        foreach (byte op in new byte[] { 0x4E, 0x66, 0x6E }) edInstructions.Add(new Instruction(op, "IM 0", new[] { "_interruptMode = 0" }, new[] { 4 }));
+        foreach (byte op in new byte[] { 0x76 }) edInstructions.Add(new Instruction(op, "IM 1", new[] { "_interruptMode = 1" }, new[] { 4 }));
+        foreach (byte op in new byte[] { 0x7E }) edInstructions.Add(new Instruction(op, "IM 2", new[] { "_interruptMode = 2" }, new[] { 4 }));
 
-        edInstructions.Add(new Instruction(0x44, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
+        edInstructions.Add(new Instruction(0x44, "NEG", new[] { "NEG()" }, new[] { 4 })); // 8 total
         // NEG aliases
-        for (byte op = 0x4C; op <= 0x7C; op += 0x08) edInstructions.Add(new Instruction(op, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
-        foreach (byte op in new byte[] { 0x54, 0x64, 0x74 }) edInstructions.Add(new Instruction(op, "NEG", new[] { "", "NEG()" }, new[] { 4, 4 }));
+        for (byte op = 0x4C; op <= 0x7C; op += 0x08) edInstructions.Add(new Instruction(op, "NEG", new[] { "NEG()" }, new[] { 4 }));
+        foreach (byte op in new byte[] { 0x54, 0x64, 0x74 }) edInstructions.Add(new Instruction(op, "NEG", new[] { "NEG()" }, new[] { 4 }));
 
-        edInstructions.Add(new Instruction(0x4D, "RETI", new[] { "", "RETI()" }, new[] { 4, 4, 3, 3 })); // 14 total
-        edInstructions.Add(new Instruction(0x45, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 })); // 14 total
+        edInstructions.Add(new Instruction(0x4D, "RETI", new[] { "RETI()" }, new[] { 4, 3, 3 })); // 14 total
+        edInstructions.Add(new Instruction(0x45, "RETN", new[] { "RETN()" }, new[] { 4, 3, 3 })); // 14 total
         // RETN aliases
-        for (byte op = 0x55; op <= 0x7D; op += 0x08) edInstructions.Add(new Instruction(op, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 }));
-        foreach (byte op in new byte[] { 0x5D, 0x6D, 0x7D }) edInstructions.Add(new Instruction(op, "RETN", new[] { "", "RETN()" }, new[] { 4, 4, 3, 3 }));
+        for (byte op = 0x55; op <= 0x7D; op += 0x08) edInstructions.Add(new Instruction(op, "RETN", new[] { "RETN()" }, new[] { 4, 3, 3 }));
+        foreach (byte op in new byte[] { 0x5D, 0x6D, 0x7D }) edInstructions.Add(new Instruction(op, "RETN", new[] { "RETN()" }, new[] { 4, 3, 3 }));
 
         for (int r = 0; r < 8; r++) {
             edInstructions.Add(new Instruction((byte)(0x40 | (r << 3)), $"IN {regs[r]}, (C)", 
-                new[] { "", "", "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }" }, 
-                new[] { 4, 4, 4 })); // 12 total
+                new[] { "", "{ byte val = _ports?.In(BC) ?? 0xFF; if (" + r + " != 6) " + string.Format(regSetters[r], "val") + "; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }" }, 
+                new[] { 4, 4 })); // 12 total
             edInstructions.Add(new Instruction((byte)(0x41 | (r << 3)), $"OUT (C), {regs[r]}", 
-                new[] { "", "", "{ byte val = " + (r == 6 ? "(byte)0" : regs[r]) + "; _ports?.Out(BC, val); }" }, 
-                new[] { 4, 4, 4 })); // 12 total
+                new[] { "", "{ byte val = " + (r == 6 ? "(byte)0" : regs[r]) + "; _ports?.Out(BC, val); }" }, 
+                new[] { 4, 4 })); // 12 total
         }
 
-        edInstructions.Add(new Instruction(0xA0, "LDI", new[] { "", "", "LDI()" }, new[] { 4, 4, 3, 3, 2 })); // 16 total
-        edInstructions.Add(new Instruction(0xA1, "CPI", new[] { "", "", "CPI()" }, new[] { 4, 4, 3, 5 })); // 16 total
-        edInstructions.Add(new Instruction(0xA8, "LDD", new[] { "", "", "LDD()" }, new[] { 4, 4, 3, 3, 2 })); 
-        edInstructions.Add(new Instruction(0xA9, "CPD", new[] { "", "", "CPD()" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xA0, "LDI", new[] { "", "LDI()" }, new[] { 4, 3, 3, 2 })); // 16 total
+        edInstructions.Add(new Instruction(0xA1, "CPI", new[] { "", "CPI()" }, new[] { 4, 3, 5 })); // 16 total
+        edInstructions.Add(new Instruction(0xA8, "LDD", new[] { "", "LDD()" }, new[] { 4, 3, 3, 2 })); 
+        edInstructions.Add(new Instruction(0xA9, "CPD", new[] { "", "CPD()" }, new[] { 4, 3, 5 }));
         
-        edInstructions.Add(new Instruction(0xB0, "LDIR", new[] { "", "", "LDI(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 3, 2 }));
-        edInstructions.Add(new Instruction(0xB1, "CPIR", new[] { "", "", "CPI(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xB8, "LDDR", new[] { "", "", "LDD(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 3, 2 }));
-        edInstructions.Add(new Instruction(0xB9, "CPDR", new[] { "", "", "CPD(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB0, "LDIR", new[] { "", "LDI(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 3, 2 }));
+        edInstructions.Add(new Instruction(0xB1, "CPIR", new[] { "", "CPI(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB8, "LDDR", new[] { "", "LDD(); if (BC != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 3, 2 }));
+        edInstructions.Add(new Instruction(0xB9, "CPDR", new[] { "", "CPD(); if (BC != 0 && !FlagZ) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
 
-        edInstructions.Add(new Instruction(0xA2, "INI", new[] { "", "", "INI()" }, new[] { 4, 4, 3, 5 })); 
-        edInstructions.Add(new Instruction(0xAA, "IND", new[] { "", "", "IND()" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xA3, "OUTI", new[] { "", "", "OUTI()" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xAB, "OUTD", new[] { "", "", "OUTD()" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xA2, "INI", new[] { "", "INI()" }, new[] { 4, 3, 5 })); 
+        edInstructions.Add(new Instruction(0xAA, "IND", new[] { "", "IND()" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xA3, "OUTI", new[] { "", "OUTI()" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xAB, "OUTD", new[] { "", "OUTD()" }, new[] { 4, 3, 5 }));
         
-        edInstructions.Add(new Instruction(0xB2, "INIR", new[] { "", "", "INI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xBA, "INDR", new[] { "", "", "IND(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xB3, "OTIR", new[] { "", "", "OUTI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
-        edInstructions.Add(new Instruction(0xBB, "OTDR", new[] { "", "", "OUTD(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB2, "INIR", new[] { "", "INI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xBA, "INDR", new[] { "", "IND(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xB3, "OTIR", new[] { "", "OUTI(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
+        edInstructions.Add(new Instruction(0xBB, "OTDR", new[] { "", "OUTD(); if (B != 0) { PC -= 2; Tick(5); }" }, new[] { 4, 3, 5 }));
+
+        // --- DD/FD Instructions ---
+        var ddInstructions = TransformToIndexed(baseInstructions.Where(i => i.Opcode != 0xF9).ToList(), "_ix", "_ixh", "_ixl", regs, regSetters);
+        var fdInstructions = TransformToIndexed(baseInstructions.Where(i => i.Opcode != 0xF9).ToList(), "_iy", "_iyh", "_iyl", regs, regSetters);
+
+        // Explicitly handle LD SP, IX/IY (10 cycles)
+        ddInstructions.Add(new Instruction(0xF9, "LD SP, IX", new[] { "SP = _ix" }, new[] { 6 })); // 4(DD) + 6 = 10
+        fdInstructions.Add(new Instruction(0xF9, "LD SP, IY", new[] { "SP = _iy" }, new[] { 6 }));
+
+        // --- DDCB / FDCB Instructions ---
+        var ddcbInstructions = new List<Instruction>();
+        var fdcbInstructions = new List<Instruction>();
+        
+        for (int op = 0; op < 256; op++) {
+            byte opcode = (byte)op;
+            int bit = (opcode >> 3) & 0x07;
+            int reg = opcode & 0x07;
+            int type = (opcode >> 3) & 0x07;
+            
+            string mnem;
+            string act;
+            int[] cycles;
+            
+            if (opcode < 0x40) { // Shifts
+                mnem = $"{shiftNames[type]} (IX+d)";
+                act = "{ byte val = _bus.Read(WZ); val = DoShift(" + type + ", val); _bus.Write(WZ, val); if (" + reg + " != 6) " + string.Format(regSetters[reg], "val") + "; }";
+                cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // 23 total
+            } else if (opcode < 0x80) { // BIT
+                mnem = $"BIT {bit}, (IX+d)";
+                act = "{ byte val = _bus.Read(WZ); DoBit(" + bit + ", val); SetUndocumentedFlagsFromWZ(); }";
+                cycles = new[] { 4, 4, 3, 3, 3, 3 }; // 20 total
+            } else if (opcode < 0xC0) { // RES
+                mnem = $"RES {bit}, (IX+d)";
+                act = "{ byte val = _bus.Read(WZ); val = (byte)(val & ~(1 << " + bit + ")); _bus.Write(WZ, val); if (" + reg + " != 6) " + string.Format(regSetters[reg], "val") + "; }";
+                cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // 23 total
+            } else { // SET
+                mnem = $"SET {bit}, (IX+d)";
+                act = "{ byte val = _bus.Read(WZ); val = (byte)(val | (1 << " + bit + ")); _bus.Write(WZ, val); if (" + reg + " != 6) " + string.Format(regSetters[reg], "val") + "; }";
+                cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // 23 total
+            }
+
+            ddcbInstructions.Add(new Instruction(opcode, mnem, act, cycles));
+            fdcbInstructions.Add(new Instruction(opcode, mnem.Replace("IX", "IY"), act.Replace("_ix", "_iy"), cycles));
+        }
 
         // Generate the file
         var sb = new StringBuilder();
@@ -279,6 +321,7 @@ class Program
         // CB Table
         sb.AppendLine("    private void HandleCBGenerated()");
         sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // CB Prefix");
         sb.AppendLine("        byte opcode = Fetch();");
         sb.AppendLine("        switch (opcode)");
         sb.AppendLine("        {");
@@ -293,16 +336,91 @@ class Program
         // ED Table
         sb.AppendLine("    private void HandleEDGenerated()");
         sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // ED Prefix");
         sb.AppendLine("        byte opcode = Fetch();");
         sb.AppendLine("        switch (opcode)");
         sb.AppendLine("        {");
         foreach (var inst in edInstructions.OrderBy(i => i.Opcode).GroupBy(i => i.Opcode).Select(g => g.First())) {
             GenerateCase(sb, inst);
         }
-        sb.AppendLine("            default: Tick(8); break; // Invalid ED opcodes act as NOPs");
+        sb.AppendLine("            default: Tick(4); break; // Invalid ED fetch (4) + ED (4) = 8");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine();
+
+        // DD Table
+        sb.AppendLine("    private void HandleDD()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // DD Prefix");
+        sb.AppendLine("        byte opcode = Fetch();");
+        sb.AppendLine("        switch (opcode)");
+        sb.AppendLine("        {");
+        foreach (var inst in ddInstructions.OrderBy(i => i.Opcode)) {
+            GenerateCase(sb, inst);
+        }
+        sb.AppendLine("            case 0xCB: HandleDDCBGenerated(); break;");
+        sb.AppendLine("            default: StepBaseOnly(opcode); break;");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // FD Table
+        sb.AppendLine("    private void HandleFD()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // FD Prefix");
+        sb.AppendLine("        byte opcode = Fetch();");
+        sb.AppendLine("        switch (opcode)");
+        sb.AppendLine("        {");
+        foreach (var inst in fdInstructions.OrderBy(i => i.Opcode)) {
+            GenerateCase(sb, inst);
+        }
+        sb.AppendLine("            case 0xCB: HandleFDCBGenerated(); break;");
+        sb.AppendLine("            default: StepBaseOnly(opcode); break;");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // DDCB Table
+        sb.AppendLine("    private void HandleDDCBGenerated()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // CB fetch");
+        sb.AppendLine("        sbyte d = (sbyte)Fetch(); // M3");
+        sb.AppendLine("        WZ = (ushort)(_ix + d);");
+        sb.AppendLine("        byte opcode = Fetch(); // M4");
+        sb.AppendLine("        switch (opcode)");
+        sb.AppendLine("        {");
+        foreach (var inst in ddcbInstructions.OrderBy(i => i.Opcode)) {
+             var skippedCycles = inst.Cycles.Skip(2).ToArray();
+             var skippedActions = inst.Actions.Skip(2).ToArray();
+             var skippedInst = inst with { Cycles = skippedCycles, Actions = skippedActions };
+             GenerateCase(sb, skippedInst);
+        }
+        sb.AppendLine("            default: throw new System.NotImplementedException($\"DDCB Opcode 0x{opcode:X2} not implemented.\");");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        // FDCB Table
+        sb.AppendLine("    private void HandleFDCBGenerated()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        Tick(4); // CB fetch");
+        sb.AppendLine("        sbyte d = (sbyte)Fetch();");
+        sb.AppendLine("        WZ = (ushort)(_iy + d);");
+        sb.AppendLine("        byte opcode = Fetch();");
+        sb.AppendLine("        switch (opcode)");
+        sb.AppendLine("        {");
+        foreach (var inst in fdcbInstructions.OrderBy(i => i.Opcode)) {
+             var skippedCycles = inst.Cycles.Skip(2).ToArray();
+             var skippedActions = inst.Actions.Skip(2).ToArray();
+             var skippedInst = inst with { Cycles = skippedCycles, Actions = skippedActions };
+             GenerateCase(sb, skippedInst);
+        }
+        sb.AppendLine("            default: throw new System.NotImplementedException($\"FDCB Opcode 0x{opcode:X2} not implemented.\");");
+        sb.AppendLine("        }");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+
+        GenerateStepBaseOnly(sb, baseInstructions);
 
         // Helper
         sb.AppendLine("    private bool IsGenerated(byte opcode)");
@@ -327,6 +445,23 @@ class Program
 
         System.IO.File.WriteAllText(outputPath, sb.ToString());
         System.Console.WriteLine($"Generated {outputPath}");
+    }
+
+    static void GenerateStepBaseOnly(StringBuilder sb, List<Instruction> baseInstructions) {
+         sb.AppendLine("    private void StepBaseOnly(byte opcode)");
+         sb.AppendLine("    {");
+         sb.AppendLine("        switch (opcode)");
+         sb.AppendLine("        {");
+         foreach (var inst in baseInstructions.OrderBy(i => i.Opcode)) {
+             GenerateCase(sb, inst);
+         }
+         sb.AppendLine("            case 0xCB: HandleCBGenerated(); break;");
+         sb.AppendLine("            case 0xED: HandleEDGenerated(); break;");
+         sb.AppendLine("            case 0xDD: HandleDD(); break;");
+         sb.AppendLine("            case 0xFD: HandleFD(); break;");
+         sb.AppendLine("            default: throw new System.NotImplementedException($\"Opcode 0x{opcode:X2} not implemented.\");");
+         sb.AppendLine("        }");
+         sb.AppendLine("    }");
     }
 
     static void GenerateCase(StringBuilder sb, Instruction inst) {
@@ -354,5 +489,94 @@ class Program
             }
         }
         sb.AppendLine("} break;");
+    }
+
+    static List<Instruction> TransformToIndexed(List<Instruction> baseInsts, string reg16, string regH, string regL, string[] regs, string[] regSetters) {
+        var result = new List<Instruction>();
+        foreach (var inst in baseInsts) {
+            bool usesHlPtr = inst.Mnemonic.Contains("(HL)");
+            bool usesHl = inst.Mnemonic.Contains(" HL") || inst.Mnemonic.Contains("HL,") || inst.Mnemonic == "HL";
+            bool usesH = inst.Mnemonic.Contains(" H") || inst.Mnemonic.Contains("H,") || inst.Mnemonic == "H" || inst.Mnemonic.EndsWith(" H");
+            bool usesL = inst.Mnemonic.Contains(" L") || inst.Mnemonic.Contains("L,") || inst.Mnemonic == "L" || inst.Mnemonic.EndsWith(" L");
+
+            if (!usesHlPtr && !usesHl && !usesH && !usesL) continue;
+
+            string mnemonic = inst.Mnemonic;
+            string[] actions = (string[])inst.Actions.Clone();
+            int[] cycles = (int[])inst.Cycles.Clone();
+
+            if (usesHlPtr && mnemonic != "JP (HL)" && mnemonic != "EX (SP), HL") {
+                mnemonic = mnemonic.Replace("(HL)", $"({reg16}+d)");
+                
+                var newActions = new List<string> { "" }; // M2 Opcode fetch logic (prefix was M1)
+                var newCycles = new List<int> { 4 }; // M2: opcode fetch
+                
+                // M3: Fetch displacement
+                newActions.Add("sbyte d = (sbyte)Fetch()");
+                newCycles.Add(3);
+
+                // M4: Calculate effective address into WZ (internal delay)
+                newActions.Add($"WZ = (ushort)({reg16} + d)");
+                newCycles.Add(5);
+
+                // Add original actions (M5+)
+                for (int i = 0; i < actions.Length; i++) {
+                    string act = actions[i];
+                    if (string.IsNullOrEmpty(act)) continue;
+
+                    act = act.Replace("_bus.Read(HL)", "_bus.Read(WZ)");
+                    act = act.Replace("_bus.Write(HL,", "_bus.Write(WZ,");
+                    act = act.Replace("HL++", "WZ++"); 
+                    act = act.Replace("HL--", "WZ--");
+                    act = act.Replace("SetReg(6,", "SetRegWZ(");
+
+                    newActions.Add(act);
+                    if (i > 0) newCycles.Add(cycles[i]);
+                    else newCycles.Add(3); // M5 read/write
+                }
+
+                actions = newActions.ToArray();
+                cycles = newCycles.ToArray();
+            } else {
+                // Register redirection
+                mnemonic = mnemonic.Replace("HL", reg16);
+                mnemonic = mnemonic.Replace(" H", " " + regH).Replace("H,", regH + ",").Replace("(H)", "(" + regH + ")");
+                mnemonic = mnemonic.Replace(" L", " " + regL).Replace("L,", regL + ",").Replace("(L)", "(" + regL + ")");
+                
+                for (int i = 0; i < actions.Length; i++) {
+                    if (string.IsNullOrEmpty(actions[i])) continue;
+
+                    actions[i] = actions[i].Replace("HL", reg16);
+                    actions[i] = actions[i].Replace(" H ", $" {regH} ");
+                    actions[i] = actions[i].Replace(" L ", $" {regL} ");
+                    actions[i] = actions[i].Replace(" H;", $" {regH};");
+                    actions[i] = actions[i].Replace(" L;", $" {regL};");
+                    actions[i] = actions[i].Replace("(H)", $"({regH})");
+                    actions[i] = actions[i].Replace("(L)", $"({regL})");
+                    actions[i] = actions[i].Replace("H = ", $"{regH} = ");
+                    actions[i] = actions[i].Replace("L = ", $"{regL} = ");
+                    actions[i] = actions[i].Replace("H = {0}", $"{regH} = {{0}}");
+                    actions[i] = actions[i].Replace("L = {0}", $"{regL} = {{0}}");
+                    actions[i] = actions[i].Replace("DoInc(H)", $"DoInc({regH})");
+                    actions[i] = actions[i].Replace("DoInc(L)", $"DoInc({regL})");
+                    actions[i] = actions[i].Replace("DoDec(H)", $"DoDec({regH})");
+                    actions[i] = actions[i].Replace("DoDec(L)", $"DoDec({regL})");
+                    
+                    for (int r = 0; r < 8; r++) {
+                         actions[i] = actions[i].Replace(string.Format(regSetters[r], "H"), string.Format(regSetters[r], regH));
+                         actions[i] = actions[i].Replace(string.Format(regSetters[r], "L"), string.Format(regSetters[r], regL));
+                    }
+                    
+                    // Final properties safety
+                    actions[i] = actions[i].Replace(" H ", $" {regH} ").Replace(" L ", $" {regL} ");
+                    actions[i] = actions[i].Replace(" H,", $" {regH},").Replace(" L,", $" {regL},");
+                    actions[i] = actions[i].Replace(",H", $",{regH}");
+                    actions[i] = actions[i].Replace(",L", $",{regL}");
+                }
+            }
+            
+            result.Add(new Instruction(inst.Opcode, mnemonic, actions, cycles));
+        }
+        return result;
     }
 }
