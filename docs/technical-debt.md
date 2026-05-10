@@ -22,6 +22,10 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-014 | CPU-Host Call Optimization | Medium | **RESOLVED** | Low |
 | TD-015 | Thread-Safe Visuals & Audio | High | **RESOLVED** | Medium |
 | TD-016 | Floating Bus Support | Medium | **RESOLVED** | Low |
+| TD-017 | Address Mirroring Fragility | High | OPEN | Medium |
+| TD-018 | Sinclair Video Heap Churn | Medium | OPEN | Low |
+| TD-019 | Bus Conflict Inaccuracies | Medium | OPEN | Medium |
+| TD-020 | Host Audio Sync/Latency | Low | OPEN | High |
 
 ---
 
@@ -32,3 +36,23 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 
 ### TD-016: Floating Bus Support (RESOLVED)
 - **Status:** Enhanced `ZxSpectrumPortBus` to support the iconic Spectrum "Floating Bus" behavior. Reads from unmapped I/O ports now return the ULA's currently processed attribute byte instead of a static `0xFF`, a critical requirement for certain copy-protection and visual effect routines.
+
+### TD-017: Address Mirroring Fragility (OPEN)
+- **Issue:** Memory mirroring (e.g., ZX81 1K mirrors) is currently implemented using manual loops in machine constructors.
+- **Risk:** High maintenance overhead and error-prone during machine configuration changes (like RAM expansions).
+- **Remediation:** Enhance `AddressDecoder` to support bitmask-based mirroring and partial decoding natively.
+
+### TD-018: Sinclair Video Heap Churn (OPEN)
+- **Issue:** `SinclairVideo.Render` allocates a new `rowCodes` byte array for every character row, generating over 1,200 allocations per second.
+- **Risk:** Unnecessary garbage collection pressure and micro-stutters.
+- **Remediation:** Refactor to use a single pre-allocated row buffer or process RAM slices directly.
+
+### TD-019: Bus Conflict Inaccuracies (OPEN)
+- **Issue:** `AddressDecoder` uses "Last-Registration-Wins" for overlapping ranges.
+- **Risk:** Inaccurate for complex hardware where multiple devices might drive the data bus simultaneously (typically resulting in a Logical AND).
+- **Remediation:** Implement support for bus conflict resolution policies (e.g., `ConflictPolicy.LogicalAnd`).
+
+### TD-020: Host Audio Sync/Latency (OPEN)
+- **Issue:** No synchronization mechanism between the Z80 audio generation rate and the host's physical sound card clock.
+- **Risk:** Audio "pops," "crackles," or long-term drift during extended sessions.
+- **Remediation:** Implement a host-clock synchronization hook (`SyncToHostClock`) to regulate emulation speed based on audio buffer pressure.
