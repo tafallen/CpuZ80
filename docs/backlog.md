@@ -382,32 +382,54 @@ _Test cases:_
 
 ### Epic 3 — ZX81 Machine
 
+The ZX81 is a functional evolution of the ZX80. Its most significant change is the ULA's ability to generate NMIs to synchronize video generation with the CPU, allowing the "SLOW" mode where programs continue to run during display.
+
 **US-301 — Machines.Zx81 project skeleton**
-As a developer, I want a `Machines.Zx81` project with a `Zx81Machine` class wiring: 8K
-`Rom` at `0x0000–0x1FFF`, 1K `Ram` at `0x4000–0x43FF` (expandable), `AddressDecoder` bus,
-and `Cpu` — so that the machine can be constructed, reset, and stepped.
-- Constructor: `Zx81Machine(byte[] rom, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)`
-- Public surface mirrors `Zx80Machine`.
-- Acceptance: `Machines.Zx81.Tests`; construct with stub ROM, `Reset()`, assert PC from
-  reset vector.
+Establish the Sinclair ZX81 machine compositor. This story sets up the foundational hardware wiring, including the expanded 8K ROM and the standard 1K RAM (with partial decoding mirrors). It ensures the CPU initializes in the correct state for the ZX81's specific ROM firmware requirements.
+- **Tasks**:
+    - Create `Machines.Zx81` and its unit test project.
+    - Configure `AddressDecoder` for partial decoding: ROM range `0x0000–0x1FFF` (mirrored at `0x2000`); RAM range `0x4000–0x43FF` (mirrored throughout `0x4000–0x7FFF`).
+    - Implement `Reset()`: set `PC = 0x0000`, `I = 0x1E` (font at `$1E00`).
+    - Wire `Cpu` with bus and default null `ICpuHost`.
+- **Acceptance**:
+    - `Zx81Machine` instantiates with 8K ROM.
+    - `Reset()` sets `PC == 0` and `I == 0x1E`.
+    - `Step()` and `RunFrame()` advance T-states correctly (65,000 T-states per frame).
 
-**US-302 — ZX81 NMI-driven display (SLOW mode)**
-As a user, I want `RunFrame()` to fire NMI at the start of each display line when in SLOW
-mode — causing the CPU to HALT and the NMI handler to generate the next line of video —
-so that the ZX81 display loop works as on real hardware.
-- Acceptance: test confirms NMI fires at the correct cycle count intervals and the CPU
-  HALTs between NMIs for the expected number of cycles.
+**US-302 — ZX81 ULA: SLOW/FAST Mode & NMI**
+Model the core innovation of the ZX81 ULA: the Non-Maskable Interrupt (NMI) generator. This allows the machine to operate in "SLOW" mode (continuous display) or "FAST" mode (display blanked during execution). The emulator must monitor I/O port writes to toggle this generator and inject NMIs at precise intervals.
+- **Tasks**:
+    - Implement `Zx81CpuHost : ICpuHost`.
+    - Handle `OnPortAccess`: `OUT 0xFD` (FAST, disable NMI), `OUT 0xFE` (SLOW, enable NMI).
+    - Implement `OnMemoryAccess` for high-bit display interception.
+    - In `RunFrame`, inject NMI every **207 T-states** if `NmiEnabled` is true.
+- **Acceptance**:
+    - Port writes correctly toggle `NmiEnabled` in machine state.
+    - Periodical NMIs delivered in SLOW mode; zero NMIs in FAST mode.
+    - CPU halts correctly when entering NMI handler for video.
 
-**US-303 — ZX81 FAST mode**
-As a user, I want the emulator to detect when the ZX81 is in FAST mode (NMI generator
-disabled) and run `RunFrame()` without injecting NMIs — so that FAST mode programs run at
-full speed without display output.
-- Acceptance: test switches to FAST mode and asserts no NMI is delivered for a full frame.
+**US-303 — ZX81 Video Rendering**
+Implement the video generation subsystem for the ZX81. Unlike the ZX80's fixed-length display file, the ZX81 supports "collapsed" display files where lines can be shorter than 32 characters to save precious RAM. Rendering must parse this format and handle inverse video (Bit 7).
+- **Tasks**:
+    - Implement `Zx81Video` using composition.
+    - Parse `D_FILE` (pointer at `$400C`), stopping rows at `HALT` (0x76).
+    - Pixel generation: lookup 8x8 dot patterns from ROM at `$1E00` base, applying bit 7 inversion.
+    - Convert to ARGB32 and submit to `IVideoSink`.
+- **Acceptance**:
+    - `RenderFrame()` generates pixel-perfect images for standard and collapsed display files.
+    - Inverse characters render correctly.
+    - Accurately uses `I` register offset for font lookup.
 
-**US-304 — ZX81 tape**
-As a user, I want `.p` tape images loadable via `ITapeDevice` using the ZX81 ROM's tape
-routines — so that programs can be loaded from virtual tape.
-- Acceptance: mirrors US-204.
+**US-304 — ZX81 Keyboard & Tape**
+Implement user input and persistent storage support for the ZX81. This involves wiring the 8x5 keyboard matrix and supporting the `.p` tape file format, which is the ZX81's standard memory snapshot format.
+- **Tasks**:
+    - Reuse `Zx80KeyboardAdapter` matrix logic.
+    - Map Port `$FE` to keyboard adapter.
+    - Implement `Zx81TapeAdapter` for `.p` files (RAM dump from `$4000` to `E_LINE` at `$400A`).
+    - Implement bit-count encoding (EAR on bit 6, MIC on bit 3).
+- **Acceptance**:
+    - `IN 0xFE` reflects host key states.
+    - Loading `.p` file correctly populates RAM; machine continues BASIC execution.
 
 ---
 

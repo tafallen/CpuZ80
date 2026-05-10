@@ -12,7 +12,7 @@ namespace Machines.Zx80;
 /// When multiple rows are selected (multiple address bits low), the adapter
 /// ANDs the results so that keys from all active rows appear in the output.
 /// </summary>
-internal sealed class Zx80KeyboardAdapter
+public sealed class Zx80KeyboardAdapter
 {
     private readonly IPhysicalKeyboard _keyboard;
 

@@ -151,6 +151,9 @@ public sealed partial class Cpu
         StepGenerated(opcode);
     }
 
+    public byte ReadMemory(ushort address) => Read(address);
+    public void WriteMemory(ushort address, byte value) => Write(address, value);
+
     private byte Read(ushort addr)
     {
         _host?.OnMemoryAccess(addr, this);
