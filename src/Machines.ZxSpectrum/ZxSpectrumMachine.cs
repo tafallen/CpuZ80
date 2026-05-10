@@ -108,9 +108,9 @@ public sealed class ZxSpectrumMachine
     public void RenderFrame(IVideoSink sink)
     {
         bool flashInverted = (_frameCounter & 0x10) != 0;
-        
+
         // Video rendering uses the snapshotted border transitions and frame anchor
-        _video.Render(sink, _ports.RenderBorderTransitions, _ports.BorderColor, flashInverted, _renderFrameStartCycles);
+        _video.Render(sink, _renderBorderTransitions, _ports.BorderColor, flashInverted, _renderFrameStartCycles);
 
         // Audio rendering uses the snapshotted transitions
         if (_audioSink is not null)
@@ -118,4 +118,45 @@ public sealed class ZxSpectrumMachine
             _beeper.Render(_audioSink, Cpu.TotalCycles);
         }
     }
-}
+
+    /// <summary>
+    /// Loads a .SNA file snapshot (48K version).
+    /// </summary>
+    public void LoadSnapshot(Stream data)
+    {
+        byte[] header = new byte[27];
+        if (data.Read(header, 0, 27) != 27) throw new InvalidDataException("Invalid .SNA header");
+
+        Cpu.I = header[0];
+        Cpu.HL_ = (ushort)(header[1] | (header[2] << 8));
+        Cpu.DE_ = (ushort)(header[3] | (header[4] << 8));
+        Cpu.BC_ = (ushort)(header[5] | (header[6] << 8));
+        Cpu.AF_ = (ushort)(header[7] | (header[8] << 8));
+        Cpu.HL = (ushort)(header[9] | (header[10] << 8));
+        Cpu.DE = (ushort)(header[11] | (header[12] << 8));
+        Cpu.BC = (ushort)(header[13] | (header[14] << 8));
+        Cpu.IY = (ushort)(header[15] | (header[16] << 8));
+        Cpu.IX = (ushort)(header[17] | (header[18] << 8));
+
+        // Byte 19: Bit 2 is IFF2
+        bool iff2 = (header[19] & 0x04) != 0;
+        Cpu.IFF1 = iff2;
+        Cpu.IFF2 = iff2;
+
+        Cpu.R = header[20];
+        Cpu.AF = (ushort)(header[21] | (header[22] << 8));
+        Cpu.SP = (ushort)(header[23] | (header[24] << 8));
+        Cpu.IM = header[25] & 0x03;
+        _ports.Out(0x00FE, header[26]); // Set border color
+
+        byte[] ram = new byte[49152];
+        int read = data.Read(ram, 0, 49152);
+        Ram.Load(0, ram.Take(read).ToArray());
+
+        // For .SNA, the PC is stored on the stack and must be popped.
+        byte lo = Cpu.ReadMemory(Cpu.SP++);
+        byte hi = Cpu.ReadMemory(Cpu.SP++);
+        Cpu.PC = (ushort)(lo | (hi << 8));
+    }
+    }
+

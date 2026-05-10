@@ -68,6 +68,12 @@ public sealed partial class Cpu
     public byte H_ { get; set; }
     public byte L_ { get; set; }
 
+    public ushort AF { get => (ushort)((A << 8) | F); set { A = (byte)(value >> 8); F = (byte)value; } }
+    public ushort AF_ { get => (ushort)((A_ << 8) | F_); set { A_ = (byte)(value >> 8); F_ = (byte)value; } }
+    public ushort BC_ { get => (ushort)((B_ << 8) | C_); set { B_ = (byte)(value >> 8); C_ = (byte)value; } }
+    public ushort DE_ { get => (ushort)((D_ << 8) | E_); set { D_ = (byte)(value >> 8); E_ = (byte)value; } }
+    public ushort HL_ { get => (ushort)((H_ << 8) | L_); set { H_ = (byte)(value >> 8); L_ = (byte)value; } }
+
     public ushort BC { get => (ushort)((B << 8) | C); set { B = (byte)(value >> 8); C = (byte)value; } }
     public ushort DE { get => (ushort)((D << 8) | E); set { D = (byte)(value >> 8); E = (byte)value; } }
     public ushort HL { get => (ushort)((H << 8) | L); set { H = (byte)(value >> 8); L = (byte)value; } }

@@ -182,4 +182,32 @@ public class ZxSpectrumMachineTests
         public short[]? LastSamples;
         public void SubmitSamples(ReadOnlySpan<short> samples, int sampleRate) => LastSamples = samples.ToArray();
     }
+
+    [Fact]
+    public void LoadSnapshot_SNA_RestoresState()
+    {
+        var machine = new ZxSpectrumMachine(_stubRom);
+        byte[] snaData = new byte[27 + 49152];
+        
+        // Setup dummy header
+        snaData[0] = 0x12; // I
+        snaData[1] = 0x34; snaData[2] = 0x56; // HL'
+        snaData[21] = 0xAA; snaData[22] = 0xBB; // AF
+        snaData[23] = 0x00; snaData[24] = 0x40; // SP = 0x4000
+        snaData[25] = 1; // IM 1
+        
+        // Setup dummy RAM with PC on stack at 0x4000
+        snaData[27 + 0] = 0xDE; // PC lo
+        snaData[27 + 1] = 0xC0; // PC hi
+        
+        using var stream = new MemoryStream(snaData);
+        machine.LoadSnapshot(stream);
+        
+        Assert.Equal(0x12, machine.Cpu.I);
+        Assert.Equal(0x5634, machine.Cpu.HL_);
+        Assert.Equal(0xBBAA, machine.Cpu.AF);
+        Assert.Equal(0xC0DE, machine.Cpu.PC);
+        Assert.Equal(1, machine.Cpu.IM);
+        Assert.Equal(0x4002, machine.Cpu.SP);
+    }
 }

@@ -58,7 +58,6 @@ public sealed class ZxSpectrumVideo
 
         // Border rendering parameters
         const int TStatesPerLine = 224;
-        const int TStatesPerPixel = 224 / 320; // 0.7 - wait, horizontal is not a simple div.
         // Spectrum: 224 T-states per line. Border is displayed during certain T-states.
         // For simplicity in a 320x240 view, we assume 1 pixel = 1/320th of a line.
 

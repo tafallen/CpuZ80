@@ -33,7 +33,7 @@ public sealed class SinclairKeyboardAdapter
         // A14
         [PhysicalKey.Return, PhysicalKey.L, PhysicalKey.K, PhysicalKey.J, PhysicalKey.H],
         // A15
-        [PhysicalKey.Space, PhysicalKey.Period, PhysicalKey.M, PhysicalKey.N, PhysicalKey.B],
+        [PhysicalKey.Space, PhysicalKey.RightShift, PhysicalKey.M, PhysicalKey.N, PhysicalKey.B],
     ];
 
     public SinclairKeyboardAdapter(IPhysicalKeyboard keyboard) => _keyboard = keyboard;
