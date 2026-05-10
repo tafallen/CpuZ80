@@ -15,12 +15,15 @@ public sealed partial class Cpu
     public bool IFF2 { get; set; }
     private bool _halted;
     private bool _nmiPending;
-    private bool _intPending;
+    public bool IntPin { get; set; }
     private byte _intDataBus;
     private bool _eiDelay;
 
     public void TriggerNmi() => _nmiPending = true;
-    public void TriggerInt(byte dataBus = 0xFF) { _intPending = true; _intDataBus = dataBus; }
+    public void TriggerInt(byte dataBus = 0xFF) { IntPin = true; _intDataBus = dataBus; }
+
+    private int _interruptMode = 0;
+    public int IM { get => _interruptMode; set => _interruptMode = value; }
 
     private ushort _ix, _iy;
     private byte _ixh { get => (byte)(_ix >> 8); set => _ix = (ushort)((value << 8) | (_ix & 0xFF)); }
@@ -135,7 +138,7 @@ public sealed partial class Cpu
         IFF2 = false;
         _halted     = false;
         _nmiPending = false;
-        _intPending = false;
+        IntPin      = false;
         _eiDelay    = false;
         WZ          = 0;
     }
@@ -152,11 +155,10 @@ public sealed partial class Cpu
         }
         
         // Maskable interrupts are sampled at the end of every instruction.
-        // If one is pending and enabled, we service it BEFORE fetching the next opcode.
-        if (_intPending && IFF1 && !_eiDelay)
+        // On real hardware, the Z80 samples the INT pin during the last T-state of an instruction.
+        if (IntPin && IFF1 && !_eiDelay)
         {
             _halted = false;
-            _intPending = false;
             AcceptInt();
             return;
         }

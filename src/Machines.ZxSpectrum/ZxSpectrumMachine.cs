@@ -59,12 +59,18 @@ public sealed class ZxSpectrumMachine
     public void RunFrame()
     {
         // Assert INT signal at the start of the frame.
-        // On real hardware, the ULA holds this for 32 T-states.
-        Cpu.TriggerInt();
+        // On real hardware, the ULA holds this low for 32 T-states.
+        Cpu.IntPin = true;
 
         ulong target = Cpu.TotalCycles + CyclesPerFrame;
+        ulong releaseIntAt = Cpu.TotalCycles + 32;
+
         while (Cpu.TotalCycles < target)
         {
+            if (Cpu.IntPin && Cpu.TotalCycles >= releaseIntAt)
+            {
+                Cpu.IntPin = false;
+            }
             Step();
         }
         _frameCounter++;
