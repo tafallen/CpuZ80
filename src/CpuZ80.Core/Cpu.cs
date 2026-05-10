@@ -80,14 +80,25 @@ public sealed partial class Cpu
     public bool WaitPin { get; set; }
     public int WaitCycles { get; set; }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Tick(int count)
+    {
+        // Common case: no wait states injected.
+        // Fast-path avoids the loop and branching.
+        if (!WaitPin && WaitCycles == 0)
+        {
+            TotalCycles += (ulong)count;
+            return;
+        }
+
+        TickSlow(count);
+    }
+
+    private void TickSlow(int count)
     {
         for (int i = 0; i < count; i++)
         {
             TotalCycles++;
-            
-            // Wait states can be injected via the binary WaitPin (synchronous)
-            // or by setting WaitCycles (efficient batch wait).
             while (WaitPin || WaitCycles > 0)
             {
                 if (WaitCycles > 0) WaitCycles--;
@@ -203,7 +214,7 @@ public sealed partial class Cpu
     {
         return index switch
         {
-            0 => B, 1 => C, 2 => D, 3 => E, 4 => H, 5 => L, 6 => _bus.Read(HL), 7 => A,
+            0 => B, 1 => C, 2 => D, 3 => E, 4 => H, 5 => L, 6 => Read(HL), 7 => A,
             _ => throw new ArgumentOutOfRangeException(nameof(index))
         };
     }
@@ -242,7 +253,7 @@ public sealed partial class Cpu
             case 3: E = val; break;
             case 4: H = val; break;
             case 5: L = val; break;
-            case 6: _bus.Write(HL, val); break;
+            case 6: Write(HL, val); break;
             case 7: A = val; break;
             default: throw new ArgumentOutOfRangeException(nameof(index));
         }
