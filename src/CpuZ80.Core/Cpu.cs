@@ -117,6 +117,8 @@ public sealed partial class Cpu
         Tick(4);
     }
 
+    public bool IsHalted => _halted;
+
     public Cpu(IBus bus, IPortBus? ports = null, ICpuHost? host = null)
     {
         _bus = bus;
