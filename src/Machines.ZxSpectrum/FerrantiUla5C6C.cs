@@ -29,6 +29,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private readonly SinclairKeyboardAdapter? _keyboard;
     private readonly ITapeDevice?             _tape;
     private readonly IAudioSink?              _audioSink;
+    private readonly Ram                      _ram;
     private Cpu? _cpu;
 
     private readonly object _lock = new();
@@ -41,6 +42,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
 
     public FerrantiUla5C6C(Ram ram, SinclairKeyboardAdapter? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
+        _ram       = ram;
         _video     = new ZxSpectrumVideo(ram);
         _beeper    = new BeeperDevice();
         _keyboard  = keyboard;
@@ -174,6 +176,31 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
         {
             FloatingBusValue = 0xFF;
             return;
+        }
+
+        // ULA fetches 2 bytes every 8 cycles (Bitmap, then Attribute).
+        // Cycle 0,1: Bitmap
+        // Cycle 2,3: Attribute <-- Floating Bus
+        // Cycle 4,5: Bitmap
+        // Cycle 6,7: Attribute <-- Floating Bus
+        
+        int charX = lineCycle / 4; // 0 to 31
+        int charY = (t - VisibleTStatesStart) / (CyclesPerLine); // 0 to 191
+        int charRow = charY / 8;
+        int third = charRow / 8;
+        int rowInThird = charRow % 8;
+
+        // Attribute address: 0x5800 + (third << 8) + (rowInThird << 5) + charX
+        ushort attrAddr = (ushort)(0x5800 + (third * 256) + (rowInThird * 32) + charX);
+        
+        int subCycle = lineCycle % 8;
+        if (subCycle == 2 || subCycle == 3 || subCycle == 6 || subCycle == 7)
+        {
+            FloatingBusValue = _ram.Read((ushort)(attrAddr - 0x4000));
+        }
+        else
+        {
+            FloatingBusValue = 0xFF;
         }
     }
 }
