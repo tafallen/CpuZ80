@@ -17,6 +17,8 @@ public sealed class ZxSpectrumMachine
 
     private readonly ZxSpectrumPortBus _ports;
     private readonly ZxSpectrumCpuHost _host;
+    private readonly ZxSpectrumVideo   _video;
+    private int _frameCounter;
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -35,12 +37,14 @@ public sealed class ZxSpectrumMachine
         _host  = new ZxSpectrumCpuHost();
 
         Cpu = new Cpu(bus, _ports, _host);
+        _video = new ZxSpectrumVideo(Ram);
     }
 
     public void Reset()
     {
         Cpu.Reset();
         Cpu.I = 0x3F; // Default font in ROM
+        _frameCounter = 0;
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -50,4 +54,12 @@ public sealed class ZxSpectrumMachine
     public void WritePort(ushort address, byte value) => _ports.Out(address, value);
 
     public void Step() => Cpu.Step();
+
+    public void RenderFrame(IVideoSink sink)
+    {
+        // Flash toggles every 16 frames (approx 0.32 seconds)
+        bool flashInverted = (_frameCounter & 0x10) != 0;
+        _video.Render(sink, _ports.BorderColor, flashInverted);
+        _frameCounter++;
+    }
 }
