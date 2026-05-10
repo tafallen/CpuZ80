@@ -169,6 +169,21 @@ public class Zx81MachineTests
             Assert.Equal((byte)i, machine.ReadMemory((ushort)(0x4000 + i)));
     }
 
+    [Fact]
+    public void MemoryMap_16KRamPack_ProvidesContiguous16K()
+    {
+        var machine = new Zx81Machine(_stubRom, is16K: true);
+        
+        // Write to 0x4000
+        machine.WriteMemory(0x4000, 0x55);
+        // Write to 0x4400 (which would be a mirror in 1K mode)
+        machine.WriteMemory(0x4400, 0xAA);
+        
+        // Assert they are unique
+        Assert.Equal(0x55, machine.ReadMemory(0x4000));
+        Assert.Equal(0xAA, machine.ReadMemory(0x4400));
+    }
+
     private class MockVideoSink : IVideoSink
     {
         public uint[]? LastFrame;

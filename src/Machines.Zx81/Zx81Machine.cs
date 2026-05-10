@@ -21,12 +21,12 @@ public sealed class Zx81Machine
     private readonly SinclairVideo   _video;
     private readonly FerrantiUla2C184E _ula;
 
-    public Zx81Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
+    public Zx81Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null, bool is16K = false)
     {
         if (romImage.Length != RomSize)
             throw new ArgumentException($"ROM must be {RomSize} bytes, got {romImage.Length}.", nameof(romImage));
 
-        Ram = new Ram(RamSize);
+        Ram = new Ram(is16K ? 0x4000 : RamSize);
         var rom = new Rom(romImage);
 
         var bus = new AddressDecoder();
@@ -35,9 +35,17 @@ public sealed class Zx81Machine
         // Decoding: A14=0, A15=0. Internal size: 8K (mask 0x1FFF)
         bus.MapMirror(0x0000, 0xC000, 0x1FFF, rom);
 
-        // RAM: 1K at 0x4000, mirrored throughout 0x4000-0x7FFF
-        // Decoding: A14=1, A15=0. Internal size: 1K (mask 0x03FF)
-        bus.MapMirror(0x4000, 0xC000, 0x03FF, Ram);
+        if (is16K)
+        {
+            // 16K RAM Pack: contiguous 16K at 0x4000-0x7FFF
+            bus.Map(0x4000, 0x7FFF, Ram);
+        }
+        else
+        {
+            // Standard 1K RAM: mirrored throughout 0x4000-0x7FFF
+            // Decoding: A14=1, A15=0. Internal size: 1K (mask 0x03FF)
+            bus.MapMirror(0x4000, 0xC000, 0x03FF, Ram);
+        }
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
         _ula = new FerrantiUla2C184E(kbAdapter, tape, audio);
