@@ -433,44 +433,72 @@ Implement user input and persistent storage support for the ZX81. This involves 
 
 ---
 
-### Epic 4 — ZX Spectrum
+### Epic 4 — ZX Spectrum 48K
+
+The ZX Spectrum introduces color attributes, maskable interrupts, beeper audio, and complex ULA memory contention. This epic focuses on the 48K model.
 
 **US-401 — Machines.ZxSpectrum project skeleton**
-As a developer, I want a `Machines.ZxSpectrum` project with a `ZxSpectrumMachine` class
-wiring: 16K `Rom` at `0x0000–0x3FFF`, 48K `Ram` at `0x4000–0xFFFF`, and `Cpu`.
-- Constructor: `ZxSpectrumMachine(byte[] rom, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)`
-- Acceptance: construct with stub ROM, `Reset()`, assert PC from reset vector.
+Establish the Sinclair ZX Spectrum 48K machine compositor. This wires the 16K ROM and 48K RAM into a contiguous 64K address space and initializes the CPU state for the Spectrum ROM.
+- **Tasks**:
+    - Create `src/Machines.ZxSpectrum` and `tests/Machines.ZxSpectrum.Tests`.
+    - Configure `AddressDecoder`: ROM `0x0000–0x3FFF`, RAM `0x4000–0xFFFF`.
+    - Implement `Reset()`: set `PC = 0x0000`, `I = 0x3F` (standard ROM font).
+- **Acceptance**:
+    - `ZxSpectrumMachine` instantiates correctly.
+    - `Reset()` sets `PC == 0` and `I == 0x3F`.
+    - `ReadMemory` returns ROM bytes at `$0000` and RAM bytes at `$4000`.
 
-**US-402 — ULA: keyboard and border**
-As a user, I want the ULA's `IN 0xFE` keyboard half-row reads and `OUT 0xFE` border/speaker
-writes implemented — so that the ROM can scan the keyboard and produce border colour and
-beeper output.
-- Acceptance: tests drive stub keyboard and assert `IN` results; `OUT` border writes are
-  captured and exposed on the machine.
+**US-402 — Spectrum Video & Attribute Rendering**
+Implement the 256x192 attribute-based display. The Spectrum uses a bitmap (`$4000-$57FF`) and a color attribute buffer (`$5800-$5AFF`). Rendering must handle Ink, Paper, Bright, and Flash bits.
+- **Tasks**:
+    - Create `ZxSpectrumVideo` using the composition pattern.
+    - Implement the bit-to-pixel expansion with attribute color lookup (16 colors).
+    - Support the `Flash` bit (toggles every 16 or 32 frames).
+    - Model the border color (captured from Port `$FE` writes).
+- **Acceptance**:
+    - `RenderFrame()` produces a 256x192 ARGB32 image.
+    - Color attributes correctly applied to 8x8 pixel blocks.
+    - Integration test verifies correct color output for known bitmap/attribute data.
 
-**US-403 — ULA: 50Hz INT**
-As a user, I want the ULA to assert the Z80 INT line once per frame (~69,888 T-states at
-3.5 MHz) — so that the ROM's interrupt-driven keyboard scan and display flash routine runs
-correctly.
-- Acceptance: test runs 70,000 cycles and asserts exactly one INT was accepted.
+**US-403 — 50Hz Interrupt Timing**
+Implement the ULA's 50Hz maskable interrupt (INT) signal. This drives the ROM's keyboard scanning and flash timing.
+- **Tasks**:
+    - In `RunFrame`, assert the Z80 `INT` line once per frame (~69,888 T-states).
+    - Ensure the INT signal is held long enough for the CPU to sample it (approx 32 T-states).
+    - Model Interrupt Mode 1 (jumps to `$0038`).
+- **Acceptance**:
+    - The CPU jumps to `$0038` periodically during execution.
+    - ROM system variable `FRAMES` (`$5C78`) increments correctly over time.
 
-**US-404 — ULA: display rendering**
-As a user, I want `RenderFrame()` to accept an `IVideoSink` and produce a 256×192 pixel
-image from the Spectrum's bitmap + attribute RAM — so that the screen updates at 50 Hz.
-- Acceptance: test writes known bitmap and attribute bytes, calls `RenderFrame()`, and
-  asserts the expected ARGB pixel values.
+**US-404 — Beeper Audio**
+Implement the single-bit speaker output. The Spectrum generates audio by rapidly toggling bit 4 of Port `$FE`.
+- **Tasks**:
+    - Capture `OUT 0xFE` bit 4 transitions.
+    - Implement an `AudioBuffer` to store speaker states with T-state timestamps.
+    - Resample the bitstream to 44.1kHz signed 16-bit mono for `IAudioSink`.
+- **Acceptance**:
+    - Machine exposes an `IAudioSink` integration.
+    - Verified by generating a fixed-frequency square wave and asserting the output samples.
 
-**US-405 — Beeper audio**
-As a user, I want `OUT 0xFE` bit 4 (speaker) changes captured and submitted to `IAudioSink`
-as signed-16-bit mono samples at 44100 Hz — so that beeper music and sound effects are
-audible on the host.
-- Acceptance: test toggles the speaker bit at a known frequency and asserts the submitted
-  samples contain the expected square wave.
+**US-405 — ULA Memory Contention**
+Model the Spectrum's "Contended RAM" behavior. The ULA stops the CPU when both are accessing the first 16K bank of RAM (`$4000-$7FFF`) during video generation.
+- **Tasks**:
+    - Implement `ZxSpectrumCpuHost : ICpuHost`.
+    - In `OnMemoryAccess`, check if address is in range `$4000-$7FFF`.
+    - Inject `WaitCycles` based on the current T-state relative to the frame start (ULA scanline position).
+- **Acceptance**:
+    - Benchmarks show correct execution slowdown in contended RAM compared to high RAM (`$8000+`).
+    - Timing-sensitive code (e.g. music routines) plays at the correct pitch.
 
-**US-406 — Tape: .tap file loading**
-As a user, I want `.tap` file blocks loadable via `ITapeDevice` using the Spectrum ROM
-loader — so that commercial software tape images work.
-- Acceptance: test loads a minimal `.tap` file and asserts RAM contains the expected block.
+**US-406 — Snapshots & Keyboard**
+Implement user input and standard Spectrum snapshot loading (.SNA).
+- **Tasks**:
+    - Reuse `SinclairKeyboardAdapter` (Spectrum adds "Symbol Shift" and "Caps Shift" to the same matrix).
+    - Implement `LoadSnapshot(.sna)`: populates registers and RAM from a file.
+    - Wire Port `$FE` bit 6 for EAR (tape input).
+- **Acceptance**:
+    - `IN 0xFE` correctly reads keys (including Symbol Shift).
+    - Loading a `.SNA` file successfully restores a running game or program.
 
 ---
 
