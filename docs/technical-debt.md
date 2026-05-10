@@ -12,10 +12,12 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-004 | Prefix Redirection Fragility | Medium | **RESOLVED** | High |
 | TD-005 | Incomplete CodeGen Migration | Medium | **RESOLVED** | Medium |
 | TD-006 | CodeGen Code Quality (Warnings) | Low | **RESOLVED** | Low |
-| TD-007 | AddressDecoder Range Granularity | Medium | Open | Medium |
+| TD-007 | AddressDecoder Range Granularity | Medium | **RESOLVED** | Medium |
 | TD-008 | Bus Architecture: Wait State Support | Medium | **RESOLVED** | High |
 | TD-009 | Port Bus Architecture: Custom Timing | Low | **RESOLVED** | Low |
 | TD-010 | Test Suite Organization | Low | **RESOLVED** | Low |
+| TD-011 | Register Definition Consistency | Low | **RESOLVED** | Low |
+| TD-012 | Wait State Performance | Low | **RESOLVED** | Low |
 
 ---
 
@@ -39,10 +41,8 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 ### TD-006: CodeGen Code Quality (RESOLVED)
 - **Status:** Suppressed localized `CS0162` warnings in `Cpu.Generated.cs` and cleaned up constant condition checks (like `if (6 != 6)`) in the Code Generator. The project now builds with **0 warnings**.
 
-### TD-007: AddressDecoder Range Granularity (OPEN)
-- **Description:** `AddressDecoder` requires 256-byte page alignment for all mappings.
-- **Risk:** Limits accuracy for machines with sub-page memory-mapped I/O or small ROM/RAM mirrors.
-- **Remediation:** Support a secondary "Fine-Grained Mappings" list for sub-page addresses.
+### TD-007: AddressDecoder Range Granularity (RESOLVED)
+- **Status:** Upgraded the `AddressDecoder` from a 256-page table to a full 64 KB byte-level lookup array. This provides absolute precision for any address range with zero routing overhead.
 
 ### TD-008: Bus Architecture: Wait State Support (RESOLVED)
 - **Status:** Implemented a `WaitPin` property on the `Cpu` and updated the `Tick(n)` mechanism to poll this pin during every T-state. This allows hardware components to pause the CPU mid-instruction for cycle-perfect synchronization.
@@ -52,3 +52,9 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 
 ### TD-010: Test Suite Organization (RESOLVED)
 - **Status:** Reorganized `tests/CpuZ80.Tests` into a logical directory structure (Arithmetic, Bitwise, ControlFlow, Hardware, etc.) matching the core project's modular design.
+
+### TD-011: Register Definition Consistency (RESOLVED)
+- **Status:** Converted `I` and `R` registers from public fields to properties with `internal set`, ensuring consistent encapsulation across the CPU state.
+
+### TD-012: Wait State Performance (RESOLVED)
+- **Status:** Optimized the `Tick` mechanism by introducing a `WaitCycles` counter for efficient multi-cycle batch waits, reducing the overhead of polling for long hardware delays.
