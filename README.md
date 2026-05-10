@@ -41,6 +41,33 @@ Console.WriteLine($"Result: {ram.Read(0x2000)}");   // → 2
 Console.WriteLine($"Cycles: {cpu.TotalCycles}");
 ```
 
+## Running the emulators
+
+Each computer has its own host application in the `src/Host.*` directories.
+
+### **Sinclair ZX80**
+```bash
+dotnet run --project src/Host.Zx80 -- --rom <path_to_zx80.rom> [options]
+```
+*   **Options**: `--tape <file.o>` to load a tape signal.
+
+### **Sinclair ZX81**
+```bash
+dotnet run --project src/Host.Zx81 -- --rom <path_to_zx81.rom> [options]
+```
+*   **Options**: `--snapshot <file.p>` to instantly load a program.
+
+### **Sinclair ZX Spectrum 48K**
+```bash
+dotnet run --project src/Host.ZxSpectrum -- --rom <path_to_48k.rom> [options]
+```
+*   **Options**: `--snapshot <file.sna>` to load a 48K snapshot.
+
+**Common Options**:
+*   `--scale <n>`: Window scale factor (default: 3).
+
+---
+
 ## Key types
 
 | Type | Purpose |

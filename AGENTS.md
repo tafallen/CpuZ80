@@ -40,6 +40,11 @@ src/
   CpuZ80.CodeGen/     — Instruction transformation engine and generator
   Machines.Common/    — Hardware abstraction interfaces (IVideoSink, etc.)
   Machines.Zx80/      — ZX80 machine compositor
+  Machines.Zx81/      — ZX81 machine compositor
+  Machines.ZxSpectrum/ — ZX Spectrum 48K machine compositor
+  Host.Zx80/          — Command-line runner for ZX80
+  Host.Zx81/          — Command-line runner for ZX81
+  Host.ZxSpectrum/    — Command-line runner for ZX Spectrum
 tests/
   CpuZ80.Tests/       — CPU unit tests
   CpuZ80.Exerciser/   — Standalone ZEXALL exerciser (billions of cycles)
