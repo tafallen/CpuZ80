@@ -41,18 +41,30 @@ public sealed class ZxSpectrumTapeAdapter : ITapeDevice
         _blocks.Clear();
         _currentBlockIdx = -1;
         _state = TapeState.Idle;
+        _initialized = false;
 
         while (data.Position < data.Length)
         {
-            byte lo = (byte)data.ReadByte();
-            byte hi = (byte)data.ReadByte();
+            int lo = data.ReadByte();
+            int hi = data.ReadByte();
+            if (lo == -1 || hi == -1) break; // EOF
+
             ushort len = (ushort)(lo | (hi << 8));
+            if (len == 0) continue;
+
+            if (data.Position + len > data.Length)
+            {
+                throw new InvalidDataException($".TAP block length {len} exceeds remaining stream size.");
+            }
             
             byte[] block = new byte[len];
-            if (data.Read(block, 0, len) == len)
+            int read = data.Read(block, 0, len);
+            if (read != len)
             {
-                _blocks.Add(block);
+                throw new InvalidDataException($".TAP block read failure: expected {len} bytes, got {read}.");
             }
+
+            _blocks.Add(block);
         }
 
         if (_blocks.Count > 0)
