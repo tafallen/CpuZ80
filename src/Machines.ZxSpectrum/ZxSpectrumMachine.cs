@@ -25,6 +25,7 @@ public sealed class ZxSpectrumMachine
     private int _frameCounter;
     private ulong _frameStartCycles;
     private ulong _renderFrameStartCycles;
+    private ulong _nextFrameTarget;
 
     // Transition buffering to prevent race conditions during rendering
     private readonly List<(ulong TState, byte Color)> _renderBorderTransitions = new(256);
@@ -60,8 +61,10 @@ public sealed class ZxSpectrumMachine
         _frameCounter = 0;
         _frameStartCycles = 0;
         _renderFrameStartCycles = 0;
+        _nextFrameTarget = 0;
         _beeper.Reset(0);
         _ports.Reset();
+        _renderBorderTransitions.Clear();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -90,9 +93,14 @@ public sealed class ZxSpectrumMachine
         // Assert 50Hz INT
         Cpu.IntPin = true;
         ulong releaseIntAt = Cpu.TotalCycles + 32;
-        ulong target = Cpu.TotalCycles + CyclesPerFrame;
 
-        while (Cpu.TotalCycles < target)
+        _nextFrameTarget += CyclesPerFrame;
+        
+        // Safety: if we fall too far behind, reset the target
+        if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
+            _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
+
+        while (Cpu.TotalCycles < _nextFrameTarget)
         {
             if (Cpu.IntPin && Cpu.TotalCycles >= releaseIntAt)
                 Cpu.IntPin = false;
@@ -110,7 +118,7 @@ public sealed class ZxSpectrumMachine
         bool flashInverted = (_frameCounter & 0x10) != 0;
 
         // Video rendering uses the snapshotted border transitions and frame anchor
-        _video.Render(sink, _renderBorderTransitions, _ports.BorderColor, flashInverted, _renderFrameStartCycles);
+        _video.Render(sink, _ports.RenderBorderTransitions, _ports.BorderColor, flashInverted, _renderFrameStartCycles);
 
         // Audio rendering uses the snapshotted transitions
         if (_audioSink is not null)
@@ -158,5 +166,4 @@ public sealed class ZxSpectrumMachine
         byte hi = Cpu.ReadMemory(Cpu.SP++);
         Cpu.PC = (ushort)(lo | (hi << 8));
     }
-    }
-
+}

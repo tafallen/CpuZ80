@@ -92,12 +92,12 @@ public class Zx80KeyboardTests
     [InlineData(0xBF, PhysicalKey.K,         0b00000100)]
     [InlineData(0xBF, PhysicalKey.J,         0b00001000)]
     [InlineData(0xBF, PhysicalKey.H,         0b00010000)]
-    // A15 row: Space(0), Period(1), M(2), N(3), B(4)
-    [InlineData(0x7F, PhysicalKey.Space,     0b00000001)]
-    [InlineData(0x7F, PhysicalKey.Period,    0b00000010)]
-    [InlineData(0x7F, PhysicalKey.M,         0b00000100)]
-    [InlineData(0x7F, PhysicalKey.N,         0b00001000)]
-    [InlineData(0x7F, PhysicalKey.B,         0b00010000)]
+    // A15 row: Space(0), Symbol Shift(1), M(2), N(3), B(4)
+    [InlineData(0x7F, PhysicalKey.Space,      0b00000001)]
+    [InlineData(0x7F, PhysicalKey.RightShift, 0b00000010)]
+    [InlineData(0x7F, PhysicalKey.M,          0b00000100)]
+    [InlineData(0x7F, PhysicalKey.N,          0b00001000)]
+    [InlineData(0x7F, PhysicalKey.B,          0b00010000)]
     public void Keyboard_HalfRow_CorrectBitLow(byte highByte, PhysicalKey key, byte pressedBit)
     {
         var kb = new StubKeyboard();

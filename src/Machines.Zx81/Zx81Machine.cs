@@ -69,6 +69,7 @@ public sealed class Zx81Machine
     }
 
     private ulong _nextNmiCycles;
+    private ulong _nextFrameTarget;
 
     public void Step()
     {
@@ -83,8 +84,13 @@ public sealed class Zx81Machine
 
     public void RunFrame()
     {
-        ulong target = Cpu.TotalCycles + CyclesPerFrame;
-        while (Cpu.TotalCycles < target)
+        _nextFrameTarget += CyclesPerFrame;
+
+        // Safety: if we fall too far behind, reset the target
+        if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
+            _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
+
+        while (Cpu.TotalCycles < _nextFrameTarget)
         {
             Step();
         }
@@ -122,7 +128,7 @@ internal sealed class Zx81PortBus : IPortBus
 
     public byte In(ushort port)
     {
-        byte result = _keyboard?.Read((byte)(port >> 8)) ?? 0xFF;
+        byte result = _keyboard?.Read(port) ?? 0xFF;
 
         if (_tape is not null)
         {

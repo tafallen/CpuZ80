@@ -20,7 +20,7 @@ internal sealed class Zx80PortBus : IPortBus
 
     public byte In(ushort port)
     {
-        byte result = _keyboard?.Read((byte)(port >> 8)) ?? 0xFF;
+        byte result = _keyboard?.Read(port) ?? 0xFF;
 
         // Bit 6: EAR input — 0 = pulse present, 1 = silence. Default high (no tape).
         if (_tape is not null)

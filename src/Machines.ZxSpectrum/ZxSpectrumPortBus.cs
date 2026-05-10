@@ -65,7 +65,7 @@ internal sealed class ZxSpectrumPortBus : IPortBus
         // 1. ULA responds to even port addresses
         if ((port & UlaPortMask) == 0)
         {
-            byte result = _keyboard?.Read((byte)(port >> 8)) ?? 0xFF;
+            byte result = _keyboard?.Read(port) ?? 0xFF;
 
             if (_tape is not null)
             {

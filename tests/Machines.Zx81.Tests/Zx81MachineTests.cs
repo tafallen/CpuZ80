@@ -137,7 +137,7 @@ public class Zx81MachineTests
         machine.RenderFrame(mockSink);
         
         Assert.NotNull(mockSink.LastFrame);
-        Assert.Equal(256 * 192, mockSink.LastFrame.Length);
+        Assert.Equal(320 * 240, mockSink.LastFrame.Length);
     }
 
     [Fact]

@@ -1,19 +1,29 @@
 using CpuZ80.Core;
 using Machines.Common;
+using System.Runtime.CompilerServices;
 
 namespace Machines.Sinclair.Common;
 
 /// <summary>
-/// Shared logic for Sinclair-style character rendering (ZX80, ZX81).
+/// Handles Sinclair-style character rendering (ZX80, ZX81) with border support.
+/// Renders to a 320x240 buffer to match the Spectrum high-fidelity standard.
 /// </summary>
 public sealed class SinclairVideo
 {
+    public const int TotalWidth = 320;
+    public const int TotalHeight = 240;
+    public const int ActiveWidth = 256;
+    public const int ActiveHeight = 192;
+    public const int BorderWidth = (TotalWidth - ActiveWidth) / 2;
+    public const int BorderHeight = (TotalHeight - ActiveHeight) / 2;
+
     private const uint Ink   = 0xFF000000u; // black
     private const uint Paper = 0xFFFFFFFFu; // white
 
     private readonly Rom _rom;
     private readonly Ram _ram;
     private readonly int _fontOffset;
+    private readonly uint[] _pixelBuffer = new uint[TotalWidth * TotalHeight];
 
     public SinclairVideo(Rom rom, Ram ram, int fontOffset)
     {
@@ -28,19 +38,24 @@ public sealed class SinclairVideo
     /// </summary>
     public void Render(IVideoSink sink)
     {
-        var pixels = new uint[256 * 192];
         var ram    = _ram.RawBytes;
         var rom    = _rom.RawBytes;
 
+        // Sinclair (ZX80/81) uses a static white border. 
+        // We fill the entire buffer with Paper (White) first.
+        Array.Fill(_pixelBuffer, Paper);
+
         // D_FILE is a 16-bit little-endian pointer at system offset 0x000C (absolute 0x400C).
         ushort dfile = (ushort)(ram[0x000C] | (ram[0x000D] << 8));
-        
-        // Convert to absolute RAM offset (0x4000-based)
         int pos = dfile - 0x4000; 
 
-        if (pos < 0 || pos >= ram.Length) return;
+        if (pos < 0 || pos >= ram.Length)
+        {
+            sink.SubmitFrame(_pixelBuffer, TotalWidth, TotalHeight);
+            return;
+        }
 
-        pos++; // skip the initial HALT byte
+        pos++; // skip initial HALT
 
         for (int charRow = 0; charRow < 24; charRow++)
         {
@@ -49,21 +64,20 @@ public sealed class SinclairVideo
             while (pos < ram.Length && colCount < 32)
             {
                 byte code = ram[pos++];
-                if (code == 0x76) goto rowDone; // HALT = end of row
+                if (code == 0x76) goto rowDone;
                 rowCodes[colCount++] = code;
             }
-            // Consume HALT if we hit the column limit without seeing one.
             while (pos < ram.Length && ram[pos] != 0x76) pos++;
             if (pos < ram.Length) pos++; 
 
             rowDone:
-            RenderRow(pixels, rowCodes, colCount, charRow, rom);
+            RenderRow(rowCodes, colCount, charRow, rom);
         }
 
-        sink.SubmitFrame(pixels, 256, 192);
+        sink.SubmitFrame(_pixelBuffer, TotalWidth, TotalHeight);
     }
 
-    private void RenderRow(uint[] pixels, byte[] rowCodes, int colCount, int charRow, ReadOnlySpan<byte> rom)
+    private void RenderRow(byte[] rowCodes, int colCount, int charRow, ReadOnlySpan<byte> rom)
     {
         for (int col = 0; col < 32; col++)
         {
@@ -77,13 +91,13 @@ public sealed class SinclairVideo
             {
                 byte fontByte = rom[glyphOffset + pixRow];
                 int  pixelY   = charRow * 8 + pixRow;
+                int  pixelRowOffset = (pixelY + BorderHeight) * TotalWidth + BorderWidth;
 
                 for (int bit = 0; bit < 8; bit++)
                 {
                     bool set    = (fontByte & (0x80 >> bit)) != 0;
                     bool isInk  = set ^ inverted;
-                    int  pixelX = col * 8 + bit;
-                    pixels[pixelY * 256 + pixelX] = isInk ? Ink : Paper;
+                    _pixelBuffer[pixelRowOffset + (col * 8 + bit)] = isInk ? Ink : Paper;
                 }
             }
         }

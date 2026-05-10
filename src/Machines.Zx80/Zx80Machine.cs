@@ -53,12 +53,19 @@ public sealed class Zx80Machine
     public byte ReadPort(ushort address) => _ports.In(address);
     public void WritePort(ushort address, byte value) => _ports.Out(address, value);
 
+    private ulong _nextFrameTarget;
+
     public void Step() => Cpu.Step();
 
     public void RunFrame()
     {
-        ulong target = Cpu.TotalCycles + CyclesPerFrame;
-        while (Cpu.TotalCycles < target)
+        _nextFrameTarget += CyclesPerFrame;
+        
+        // Safety: if we fall too far behind, reset the target to current cycles
+        if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
+            _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
+
+        while (Cpu.TotalCycles < _nextFrameTarget)
             Cpu.Step();
     }
 
