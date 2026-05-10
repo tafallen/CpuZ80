@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
 
 [assembly: InternalsVisibleTo("CpuZ80.Tests")]
+[assembly: InternalsVisibleTo("Machines.ZxSpectrum.Tests")]
+[assembly: InternalsVisibleTo("Machines.Zx81.Tests")]
+[assembly: InternalsVisibleTo("Machines.Zx80.Tests")]
 
 namespace CpuZ80.Core;
 
@@ -79,7 +82,7 @@ public sealed partial class Cpu
     public ushort SP { get; set; }
     public ushort WZ; // Internal temporary register (MEMPTR)
 
-    public ulong TotalCycles { get; private set; }
+    public ulong TotalCycles { get; internal set; }
     public bool WaitPin { get; set; }
     public int WaitCycles { get; set; }
 

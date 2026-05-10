@@ -19,6 +19,8 @@ public sealed class ZxSpectrumMachine
     private readonly ZxSpectrumPortBus _ports;
     private readonly ZxSpectrumCpuHost _host;
     private readonly ZxSpectrumVideo   _video;
+    private readonly BeeperDevice      _beeper;
+    private readonly IAudioSink?       _audioSink;
     private int _frameCounter;
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
@@ -33,8 +35,11 @@ public sealed class ZxSpectrumMachine
         bus.Map(0x0000, 0x3FFF, rom);
         bus.Map(0x4000, 0xFFFF, Ram);
 
+        _beeper    = new BeeperDevice();
+        _audioSink = audio;
+
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ports = new ZxSpectrumPortBus(kbAdapter, tape);
+        _ports = new ZxSpectrumPortBus(kbAdapter, tape, _beeper, () => Cpu!.TotalCycles);
         _host  = new ZxSpectrumCpuHost();
 
         Cpu = new Cpu(bus, _ports, _host);
@@ -46,6 +51,7 @@ public sealed class ZxSpectrumMachine
         Cpu.Reset();
         Cpu.I = 0x3F; // Default font in ROM
         _frameCounter = 0;
+        _beeper.Reset(0);
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -78,8 +84,15 @@ public sealed class ZxSpectrumMachine
 
     public void RenderFrame(IVideoSink sink)
     {
+        // 1. Video
         // Flash toggles every 16 frames (approx 0.32 seconds)
         bool flashInverted = (_frameCounter & 0x10) != 0;
         _video.Render(sink, _ports.BorderColor, flashInverted);
+
+        // 2. Audio
+        if (_audioSink is not null)
+        {
+            _beeper.Render(_audioSink, Cpu.TotalCycles);
+        }
     }
 }

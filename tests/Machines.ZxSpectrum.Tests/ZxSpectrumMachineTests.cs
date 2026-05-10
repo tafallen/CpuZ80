@@ -114,9 +114,40 @@ public class ZxSpectrumMachineTests
         Assert.Equal(0x0039, machine.Cpu.PC);
     }
 
+    [Fact]
+    public void RenderFrame_TogglesSpeaker_ProducesSamples()
+    {
+        var mockAudio = new MockAudioSink();
+        var machine = new ZxSpectrumMachine(_stubRom, audio: mockAudio);
+        machine.Reset();
+
+        // 1. Set speaker HIGH
+        machine.WritePort(0xFE, 0x10); 
+        machine.Cpu.TotalCycles += 1000; // Mock time passage
+
+        // 2. Set speaker LOW
+        machine.WritePort(0xFE, 0x00);
+        machine.Cpu.TotalCycles += 1000;
+
+        // 3. Render
+        machine.RenderFrame(new MockVideoSink());
+
+        Assert.NotNull(mockAudio.LastSamples);
+        Assert.True(mockAudio.LastSamples.Length > 0);
+        
+        // At least some samples should be 'Volume' (12000)
+        Assert.Contains(mockAudio.LastSamples, s => s == 12000);
+    }
+
     private class MockVideoSink : IVideoSink
     {
         public uint[]? LastFrame;
         public void SubmitFrame(ReadOnlySpan<uint> pixels, int width, int height) => LastFrame = pixels.ToArray();
+    }
+
+    private class MockAudioSink : IAudioSink
+    {
+        public short[]? LastSamples;
+        public void SubmitSamples(ReadOnlySpan<short> samples, int sampleRate) => LastSamples = samples.ToArray();
     }
 }

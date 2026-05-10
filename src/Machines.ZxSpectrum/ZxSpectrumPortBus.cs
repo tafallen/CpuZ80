@@ -20,15 +20,19 @@ internal sealed class ZxSpectrumPortBus : IPortBus
 
     private readonly SinclairKeyboardAdapter? _keyboard;
     private readonly ITapeDevice?             _tape;
+    private readonly BeeperDevice?            _beeper;
+    private readonly Func<ulong>?             _getCycles;
 
     public byte BorderColor { get; private set; }
     public bool SpeakerState { get; private set; }
     public bool MicState { get; private set; }
 
-    public ZxSpectrumPortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null)
+    public ZxSpectrumPortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null, BeeperDevice? beeper = null, Func<ulong>? getCycles = null)
     {
-        _keyboard = keyboard;
-        _tape     = tape;
+        _keyboard  = keyboard;
+        _tape      = tape;
+        _beeper    = beeper;
+        _getCycles = getCycles;
     }
 
     public byte In(ushort port)
@@ -62,6 +66,12 @@ internal sealed class ZxSpectrumPortBus : IPortBus
             MicState     = (value & MIC_Bit) != 0;
             SpeakerState = (value & Speaker_Bit) != 0;
             
+            if (_beeper is not null && _getCycles is not null)
+            {
+                // Mix bit 3 and 4 for audio output
+                _beeper.SetLevel(_getCycles(), MicState || SpeakerState);
+            }
+
             if (_tape is not null)
             {
                 _tape.WriteBit(MicState);
