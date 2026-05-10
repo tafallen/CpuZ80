@@ -43,6 +43,9 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-035 | Mapping Struct Cache Locality | Low | OPEN | Medium |
 | TD-036 | High-Fidelity Floating Bus | Medium | **RESOLVED** | Medium |
 | TD-037 | CodeGen Monolithic Design | Low | OPEN | Medium |
+| TD-038 | Port Bus Conflict Resolution | Medium | **RESOLVED** | Low |
+| TD-039 | Hard-coded Joystick Mapping | Low | OPEN | Low |
+| TD-040 | Generic PortDecoder Component | High | **RESOLVED** | Medium |
 
 ---
 
@@ -83,3 +86,9 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 
 ### TD-036: High-Fidelity Floating Bus (RESOLVED)
 - **Status:** Implemented real-time attribute sampling in the `FerrantiUla5C6C`. Unmapped port reads now return the actual attribute byte currently being fetched by the ULA based on the precise T-state within the scanline.
+
+### TD-038: Port Bus Conflict Resolution (RESOLVED)
+- **Status:** Implemented `PortDecoder` supporting `ConflictPolicy.LogicalAnd`. Wired into `ZxSpectrumPortBus` to correctly handle bus collisions between ULA and Joystick.
+
+### TD-040: Generic PortDecoder Component (RESOLVED)
+- **Status:** Created the `PortDecoder` component in `CpuZ80.Core`, providing a structured, bitmask-aware routing engine for I/O ports. This eliminates manual routing boilerplate and unblocks complex Amstrad CPC banking.
