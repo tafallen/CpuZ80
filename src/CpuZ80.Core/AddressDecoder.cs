@@ -2,12 +2,18 @@ namespace CpuZ80.Core;
 
 /// <summary>
 /// Routes CPU bus traffic to hardware components by address range.
-/// Multiple ranges may be registered; the last registration wins on overlap.
+/// Multiple ranges may be registered; the conflict policy determines behavior on overlap.
 /// Unmapped reads return 0xFF (open bus); unmapped writes are silent.
 /// Supports byte-level granularity for address mappings.
 /// </summary>
 public sealed class AddressDecoder : IBus
 {
+    public enum ConflictPolicy
+    {
+        LastRegistrationWins,
+        LogicalAnd
+    }
+
     private readonly struct Mapping
     {
         public readonly IBus? Device;
@@ -24,8 +30,13 @@ public sealed class AddressDecoder : IBus
         }
     }
 
-    // 64 KB lookup table for byte-level granularity.
     private readonly Mapping[] _map = new Mapping[65536];
+    private readonly ConflictPolicy _policy;
+
+    public AddressDecoder(ConflictPolicy policy = ConflictPolicy.LastRegistrationWins)
+    {
+        _policy = policy;
+    }
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
     public void Map(ushort from, ushort to, IBus device)
@@ -37,7 +48,7 @@ public sealed class AddressDecoder : IBus
 
         for (int i = from; i <= to; i++)
         {
-            _map[i] = new Mapping(device, from);
+            UpdateMapping((ushort)i, new Mapping(device, from));
             if (i == 65535) break; 
         }
     }
@@ -53,7 +64,31 @@ public sealed class AddressDecoder : IBus
         {
             if ((i & decodeMask) == baseAddress)
             {
-                _map[i] = new Mapping(device, baseAddress, addressMask, true);
+                UpdateMapping((ushort)i, new Mapping(device, baseAddress, addressMask, true));
+            }
+        }
+    }
+
+    private void UpdateMapping(ushort address, Mapping newMapping)
+    {
+        var existing = _map[address];
+        if (existing.Device == null || _policy == ConflictPolicy.LastRegistrationWins)
+        {
+            _map[address] = newMapping;
+        }
+        else if (_policy == ConflictPolicy.LogicalAnd)
+        {
+            // If already a conflict bus, add to it. Otherwise create a new one.
+            if (existing.Device is LogicalAndBus andBus)
+            {
+                andBus.Add(newMapping.Device!, newMapping.BaseAddress, newMapping.AddressMask, newMapping.IsMirrored);
+            }
+            else
+            {
+                var conflict = new LogicalAndBus();
+                conflict.Add(existing.Device!, existing.BaseAddress, existing.AddressMask, existing.IsMirrored);
+                conflict.Add(newMapping.Device!, newMapping.BaseAddress, newMapping.AddressMask, newMapping.IsMirrored);
+                _map[address] = new Mapping(conflict, 0); // BaseAddress is ignored by ConflictBus
             }
         }
     }
@@ -80,5 +115,39 @@ public sealed class AddressDecoder : IBus
             : (ushort)(address - mapping.BaseAddress);
 
         mapping.Device.Write(offset, value);
+    }
+
+    /// <summary>
+    /// Models physical bus contention where multiple devices pull the same data lines.
+    /// </summary>
+    private sealed class LogicalAndBus : IBus
+    {
+        private readonly List<(IBus Device, ushort Base, ushort Mask, bool Mirror)> _devices = new();
+
+        public void Add(IBus device, ushort baseAddr, ushort mask, bool mirror)
+        {
+            _devices.Add((device, baseAddr, mask, mirror));
+        }
+
+        public byte Read(ushort address)
+        {
+            // Address passed here is the absolute bus address (Mapping base was 0)
+            byte result = 0xFF;
+            foreach (var d in _devices)
+            {
+                ushort offset = d.Mirror ? (ushort)(address & d.Mask) : (ushort)(address - d.Base);
+                result &= d.Device.Read(offset);
+            }
+            return result;
+        }
+
+        public void Write(ushort address, byte value)
+        {
+            foreach (var d in _devices)
+            {
+                ushort offset = d.Mirror ? (ushort)(address & d.Mask) : (ushort)(address - d.Base);
+                d.Device.Write(offset, value);
+            }
+        }
     }
 }
