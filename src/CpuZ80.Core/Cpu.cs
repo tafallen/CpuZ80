@@ -150,6 +150,9 @@ public sealed partial class Cpu
             AcceptNmi();
             return;
         }
+        
+        // Maskable interrupts are sampled at the end of every instruction.
+        // If one is pending and enabled, we service it BEFORE fetching the next opcode.
         if (_intPending && IFF1 && !_eiDelay)
         {
             _halted = false;
@@ -157,7 +160,9 @@ public sealed partial class Cpu
             AcceptInt();
             return;
         }
+
         _eiDelay = false;
+        
         if (_halted) { R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); Tick(4); return; }
 
         byte opcode = Fetch();

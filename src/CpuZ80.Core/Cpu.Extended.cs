@@ -3,6 +3,7 @@ namespace CpuZ80.Core;
 public sealed partial class Cpu
 {
     private int _interruptMode = 0;
+    public int IM { get => _interruptMode; set => _interruptMode = value; }
 
     private ushort DoAdc16(ushort cur, ushort val)
     {

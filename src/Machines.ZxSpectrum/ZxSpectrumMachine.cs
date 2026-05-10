@@ -11,6 +11,7 @@ public sealed class ZxSpectrumMachine
 {
     private const int RomSize = 0x4000; // 16K
     private const int RamSize = 0xC000; // 48K
+    private const ulong CyclesPerFrame = 69888; // 3.5 MHz @ 50Hz
 
     public Cpu Cpu { get; }
     public Ram Ram { get; }
@@ -55,11 +56,24 @@ public sealed class ZxSpectrumMachine
 
     public void Step() => Cpu.Step();
 
+    public void RunFrame()
+    {
+        // Assert INT signal at the start of the frame.
+        // On real hardware, the ULA holds this for 32 T-states.
+        Cpu.TriggerInt();
+
+        ulong target = Cpu.TotalCycles + CyclesPerFrame;
+        while (Cpu.TotalCycles < target)
+        {
+            Step();
+        }
+        _frameCounter++;
+    }
+
     public void RenderFrame(IVideoSink sink)
     {
         // Flash toggles every 16 frames (approx 0.32 seconds)
         bool flashInverted = (_frameCounter & 0x10) != 0;
         _video.Render(sink, _ports.BorderColor, flashInverted);
-        _frameCounter++;
     }
 }
