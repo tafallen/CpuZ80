@@ -52,23 +52,46 @@ public sealed class ZxSpectrumVideo
     /// <summary>
     /// Renders the current state of Spectrum VRAM to the sink.
     /// </summary>
-    /// <param name="flashInverted">True if flashing characters should be in inverted state.</param>
-    public void Render(IVideoSink sink, byte borderColor, bool flashInverted)
+    public void Render(IVideoSink sink, IReadOnlyList<(ulong TState, byte Color)> borderTransitions, byte finalBorderColor, bool flashInverted, ulong frameStartTState)
     {
         var ram    = _ram.RawBytes;
-        uint borderARGB = PaletteNormal[borderColor & 0x07];
 
-        // 1. Fill the entire 320x240 buffer with the border color
-        // This is efficient with the pre-allocated buffer.
-        Array.Fill(_pixelBuffer, borderARGB);
+        // 1. Fill the border. To support dynamic stripes, we map T-states to screen lines.
+        // The Spectrum frame is 312 lines total.
+        // Top border: 64 lines, Active: 192 lines, Bottom: 56 lines.
+        // Horizontal: 224 T-states per line.
+        const int TStatesPerLine = 224;
+
+        int transitionIdx = 0;
+        byte currentBorder = borderTransitions.Count > 0 ? borderTransitions[0].Color : finalBorderColor;
+        
+        for (int line = 0; line < TotalHeight; line++)
+        {
+            // Map 320x240 line to Spectrum frame line (centered)
+            // Spectrum frame is 312 lines, we render 240.
+            int frameLine = line + (312 - TotalHeight) / 2;
+            ulong lineTState = frameStartTState + (ulong)(frameLine * TStatesPerLine);
+
+            // Update border color based on transitions
+            while (transitionIdx < borderTransitions.Count && borderTransitions[transitionIdx].TState <= lineTState)
+            {
+                currentBorder = borderTransitions[transitionIdx].Color;
+                transitionIdx++;
+            }
+
+            uint colorARGB = PaletteNormal[currentBorder & 0x07];
+            
+            // Fill the entire scanline in the buffer with the current border color
+            // The active area rendering will overwrite the center later.
+            int offset = line * TotalWidth;
+            Array.Fill(_pixelBuffer, colorARGB, offset, TotalWidth);
+        }
 
         // 2. Render the 256x192 active area
         for (int third = 0; third < 3; third++)
         {
             for (int charRow = 0; charRow < 8; charRow++)
             {
-                // Optimization: Attributes are constant for all 8 scanlines of a character row.
-                // Fetch the 32 attributes for this row once.
                 int attrBase = GetAttributeAddress(third, charRow);
                 ReadOnlySpan<byte> rowAttrs = ram.AsSpan(attrBase, 32);
                 
@@ -77,7 +100,6 @@ public sealed class ZxSpectrumVideo
                     int y = (third * 64) + (charRow * 8) + scanline;
                     int bitmapBase = GetBitmapAddress(third, charRow, scanline);
                     
-                    // Offset pixels to center the 256x192 area in 320x240
                     int pixelRowOffset = (y + BorderHeight) * TotalWidth + BorderWidth;
 
                     for (int col = 0; col < 32; col++)
@@ -99,7 +121,6 @@ public sealed class ZxSpectrumVideo
                             (inkColor, paperColor) = (paperColor, inkColor);
                         }
 
-                        // Expand 8 bits to pixels
                         for (int bit = 0; bit < 8; bit++)
                         {
                             bool set = (bitmap & (0x80 >> bit)) != 0;
@@ -113,20 +134,12 @@ public sealed class ZxSpectrumVideo
         sink.SubmitFrame(_pixelBuffer, TotalWidth, TotalHeight);
     }
 
-    /// <summary>
-    /// Calculates the bitmap memory offset relative to 0x4000.
-    /// Memory Layout: 0 TT SSS RRR CCCCC
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetBitmapAddress(int third, int charRow, int scanline)
     {
         return (third << 11) | (scanline << 8) | (charRow << 5);
     }
 
-    /// <summary>
-    /// Calculates the attribute memory offset relative to 0x4000.
-    /// Memory Layout: 0110 TT RRR CCCCC (Base 0x1800)
-    /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int GetAttributeAddress(int third, int charRow)
     {

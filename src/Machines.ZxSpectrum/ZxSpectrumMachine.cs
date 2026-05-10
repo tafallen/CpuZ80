@@ -19,9 +19,8 @@ public sealed class ZxSpectrumMachine
     private readonly ZxSpectrumPortBus _ports;
     private readonly ZxSpectrumCpuHost _host;
     private readonly ZxSpectrumVideo   _video;
-    private readonly BeeperDevice      _beeper;
-    private readonly IAudioSink?       _audioSink;
     private int _frameCounter;
+    private ulong _frameStartCycles;
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -39,19 +38,25 @@ public sealed class ZxSpectrumMachine
         _audioSink = audio;
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ports = new ZxSpectrumPortBus(kbAdapter, tape, _beeper, () => Cpu!.TotalCycles);
+        _ports = new ZxSpectrumPortBus(kbAdapter, tape, _beeper);
         _host  = new ZxSpectrumCpuHost();
 
         Cpu = new Cpu(bus, _ports, _host);
+        _ports.ConnectCpu(Cpu);
         _video = new ZxSpectrumVideo(Ram);
     }
+
+    private readonly BeeperDevice      _beeper;
+    private readonly IAudioSink?       _audioSink;
 
     public void Reset()
     {
         Cpu.Reset();
         Cpu.I = 0x3F; // Default font in ROM
         _frameCounter = 0;
+        _frameStartCycles = 0;
         _beeper.Reset(0);
+        _ports.ClearTransitions();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -64,6 +69,9 @@ public sealed class ZxSpectrumMachine
 
     public void RunFrame()
     {
+        _frameStartCycles = Cpu.TotalCycles;
+        _ports.ClearTransitions();
+
         // Assert INT signal at the start of the frame.
         // On real hardware, the ULA holds this low for 32 T-states.
         Cpu.IntPin = true;
@@ -87,7 +95,7 @@ public sealed class ZxSpectrumMachine
         // 1. Video
         // Flash toggles every 16 frames (approx 0.32 seconds)
         bool flashInverted = (_frameCounter & 0x10) != 0;
-        _video.Render(sink, _ports.BorderColor, flashInverted);
+        _video.Render(sink, _ports.BorderTransitions, _ports.BorderColor, flashInverted, _frameStartCycles);
 
         // 2. Audio
         if (_audioSink is not null)

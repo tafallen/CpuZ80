@@ -21,18 +21,27 @@ internal sealed class ZxSpectrumPortBus : IPortBus
     private readonly SinclairKeyboardAdapter? _keyboard;
     private readonly ITapeDevice?             _tape;
     private readonly BeeperDevice?            _beeper;
-    private readonly Func<ulong>?             _getCycles;
+    private Cpu?                              _cpu;
 
     public byte BorderColor { get; private set; }
     public bool SpeakerState { get; private set; }
     public bool MicState { get; private set; }
 
-    public ZxSpectrumPortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null, BeeperDevice? beeper = null, Func<ulong>? getCycles = null)
+    private readonly List<(ulong TState, byte Color)> _borderTransitions = new(256);
+    public IReadOnlyList<(ulong TState, byte Color)> BorderTransitions => _borderTransitions;
+
+    public ZxSpectrumPortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null, BeeperDevice? beeper = null)
     {
         _keyboard  = keyboard;
         _tape      = tape;
         _beeper    = beeper;
-        _getCycles = getCycles;
+    }
+
+    public void ConnectCpu(Cpu cpu) => _cpu = cpu;
+
+    public void ClearTransitions()
+    {
+        _borderTransitions.Clear();
     }
 
     public byte In(ushort port)
@@ -62,17 +71,23 @@ internal sealed class ZxSpectrumPortBus : IPortBus
     {
         if ((port & UlaPortMask) == 0)
         {
-            BorderColor  = (byte)(value & BorderMask);
+            byte newColor = (byte)(value & BorderMask);
+            if (newColor != BorderColor)
+            {
+                BorderColor = newColor;
+                if (_cpu is not null) _borderTransitions.Add((_cpu.TotalCycles, newColor));
+            }
+
             MicState     = (value & MIC_Bit) != 0;
             SpeakerState = (value & Speaker_Bit) != 0;
             
-            if (_beeper is not null && _getCycles is not null)
+            if (_beeper is not null && _cpu is not null)
             {
                 // Mix bit 3 and 4 for audio output.
                 // On real hardware, Speaker (bit 4) is significantly louder.
                 // We use a relative scale of 9:1.
                 int level = (SpeakerState ? 9 : 0) + (MicState ? 1 : 0);
-                _beeper.SetLevel(_getCycles(), level);
+                _beeper.SetLevel(_cpu.TotalCycles, level);
             }
 
             if (_tape is not null)
