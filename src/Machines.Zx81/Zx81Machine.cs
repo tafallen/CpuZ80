@@ -91,6 +91,22 @@ public sealed class Zx81Machine
     }
 
     public void RenderFrame(IVideoSink sink) => _video.Render(sink);
+
+    /// <summary>
+    /// Loads a .p file snapshot directly into RAM.
+    /// .p files are raw RAM dumps starting from 0x4000.
+    /// </summary>
+    public void LoadSnapshot(Stream data)
+    {
+        byte[] buffer = new byte[Ram.RawBytes.Length];
+        int read = data.Read(buffer, 0, buffer.Length);
+        Ram.Load(0, buffer.Take(read).ToArray());
+
+        // Standard behavior after a .p load is to jump to the BASIC execution loop
+        // or a specific entry point. Most .p files expect to be ready to run.
+        // We don't force PC here, as the ROM's internal state in the snapshot 
+        // usually handles the continuation.
+    }
 }
 
 internal sealed class Zx81PortBus : IPortBus

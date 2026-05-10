@@ -155,6 +155,20 @@ public class Zx81MachineTests
         Assert.Equal(0xFE, result); // Bit 0 low (active low)
     }
 
+    [Fact]
+    public void LoadSnapshot_PopulatesRam()
+    {
+        var machine = new Zx81Machine(_stubRom);
+        byte[] pFileData = new byte[100];
+        for (int i = 0; i < 100; i++) pFileData[i] = (byte)i;
+        
+        using var stream = new MemoryStream(pFileData);
+        machine.LoadSnapshot(stream);
+        
+        for (int i = 0; i < 100; i++)
+            Assert.Equal((byte)i, machine.ReadMemory((ushort)(0x4000 + i)));
+    }
+
     private class MockVideoSink : IVideoSink
     {
         public uint[]? LastFrame;
