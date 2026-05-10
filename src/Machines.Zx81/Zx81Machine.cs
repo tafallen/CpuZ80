@@ -6,7 +6,7 @@ using Machines.Sinclair.Common;
 namespace Machines.Zx81;
 
 /// <summary>
-/// Sinclair ZX81 machine compositor.
+/// Sinclair ZX81 machine motherboard.
 /// </summary>
 public sealed class Zx81Machine
 {
@@ -17,14 +17,10 @@ public sealed class Zx81Machine
 
     public Cpu Cpu { get; }
     public Ram Ram { get; }
-    public Zx81CpuHost Host { get; }
 
-    private readonly SinclairVideo _video;
-    private readonly Zx81PortBus   _ports;
+    private readonly SinclairVideo   _video;
+    private readonly FerrantiUla2C184E _ula;
 
-    /// <param name="romImage">8K ROM image. Must be exactly 8192 bytes.</param>
-    /// <param name="keyboard">Physical keyboard source.</param>
-    /// <param name="tape">Tape device.</param>
     public Zx81Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)
     {
         if (romImage.Length != RomSize)
@@ -44,10 +40,9 @@ public sealed class Zx81Machine
         }
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ports = new Zx81PortBus(kbAdapter, tape);
-        Host = new Zx81CpuHost();
+        _ula = new FerrantiUla2C184E(kbAdapter, tape);
 
-        Cpu = new Cpu(bus, _ports, Host);
+        Cpu = new Cpu(bus, _ula, _ula);
         _video = new SinclairVideo(rom, Ram, 0x1E00);
     }
 
@@ -56,16 +51,17 @@ public sealed class Zx81Machine
         Cpu.Reset();
         Cpu.I = 0x1E; 
         _nextNmiCycles = CyclesPerScanline;
+        _nextFrameTarget = 0;
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
     public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
 
-    public byte ReadPort(ushort address) => _ports.In(address);
+    public byte ReadPort(ushort address) => _ula.In(address);
     public void WritePort(ushort address, byte value)
     {
-        Host.OnPortAccess(address, Cpu);
-        _ports.Out(address, value);
+        _ula.OnPortAccess(address, Cpu);
+        _ula.Out(address, value);
     }
 
     private ulong _nextNmiCycles;
@@ -75,7 +71,7 @@ public sealed class Zx81Machine
     {
         Cpu.Step();
 
-        if (Host.NmiEnabled && Cpu.TotalCycles >= _nextNmiCycles)
+        if (_ula.NmiEnabled && Cpu.TotalCycles >= _nextNmiCycles)
         {
             Cpu.TriggerNmi();
             _nextNmiCycles += CyclesPerScanline;
@@ -86,7 +82,6 @@ public sealed class Zx81Machine
     {
         _nextFrameTarget += CyclesPerFrame;
 
-        // Safety: if we fall too far behind, reset the target
         if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
             _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
 
@@ -98,50 +93,10 @@ public sealed class Zx81Machine
 
     public void RenderFrame(IVideoSink sink) => _video.Render(sink);
 
-    /// <summary>
-    /// Loads a .p file snapshot directly into RAM.
-    /// .p files are raw RAM dumps starting from 0x4000.
-    /// </summary>
     public void LoadSnapshot(Stream data)
     {
         byte[] buffer = new byte[Ram.RawBytes.Length];
         int read = data.Read(buffer, 0, buffer.Length);
         Ram.Load(0, buffer.Take(read).ToArray());
-
-        // Standard behavior after a .p load is to jump to the BASIC execution loop
-        // or a specific entry point. Most .p files expect to be ready to run.
-        // We don't force PC here, as the ROM's internal state in the snapshot 
-        // usually handles the continuation.
-    }
-}
-
-internal sealed class Zx81PortBus : IPortBus
-{
-    private readonly SinclairKeyboardAdapter? _keyboard;
-    private readonly ITapeDevice?            _tape;
-
-    public Zx81PortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null)
-    {
-        _keyboard = keyboard;
-        _tape     = tape;
-    }
-
-    public byte In(ushort port)
-    {
-        byte result = _keyboard?.Read(port) ?? 0xFF;
-
-        if (_tape is not null)
-        {
-            bool pulse = !_tape.ReadBit();
-            if (pulse) result &= 0xBF;
-            else result |= 0x40;
-        }
-
-        return result;
-    }
-
-    public void Out(ushort port, byte value)
-    {
-        _tape?.WriteBit((value & 0x08) != 0);
     }
 }

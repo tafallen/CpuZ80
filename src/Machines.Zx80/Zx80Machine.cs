@@ -5,7 +5,7 @@ using Machines.Sinclair.Common;
 namespace Machines.Zx80;
 
 /// <summary>
-/// Sinclair ZX80 machine compositor.
+/// Sinclair ZX80 machine motherboard.
 /// </summary>
 public sealed class Zx80Machine
 {
@@ -16,12 +16,9 @@ public sealed class Zx80Machine
     public Cpu Cpu { get; }
     public Ram Ram { get; }
 
-    private readonly SinclairVideo _video;
-    private readonly Zx80PortBus   _ports;
+    private readonly SinclairVideo   _video;
+    private readonly FerrantiUla2C158E _ula;
 
-    /// <param name="romImage">4K ROM image (ZX80 BASIC ROM). Must be exactly 4096 bytes.</param>
-    /// <param name="keyboard">Physical keyboard source. Pass null for headless/test use.</param>
-    /// <param name="tape">Tape device. Pass null for no tape.</param>
     public Zx80Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)
     {
         if (romImage.Length != RomSize)
@@ -35,9 +32,9 @@ public sealed class Zx80Machine
         bus.Map(0x4000, 0x43FF, Ram);
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ports = new Zx80PortBus(kbAdapter, tape);
+        _ula = new FerrantiUla2C158E(kbAdapter, tape);
 
-        Cpu = new Cpu(bus, _ports);
+        Cpu = new Cpu(bus, _ula, _ula);
         _video = new SinclairVideo(rom, Ram, 0x0E00);
     }
 
@@ -45,13 +42,18 @@ public sealed class Zx80Machine
     {
         Cpu.Reset();
         Cpu.I = 0x0E;
+        _nextFrameTarget = 0;
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
     public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
 
-    public byte ReadPort(ushort address) => _ports.In(address);
-    public void WritePort(ushort address, byte value) => _ports.Out(address, value);
+    public byte ReadPort(ushort address) => _ula.In(address);
+    public void WritePort(ushort address, byte value)
+    {
+        _ula.OnPortAccess(address, Cpu);
+        _ula.Out(address, value);
+    }
 
     private ulong _nextFrameTarget;
 
@@ -61,7 +63,6 @@ public sealed class Zx80Machine
     {
         _nextFrameTarget += CyclesPerFrame;
         
-        // Safety: if we fall too far behind, reset the target to current cycles
         if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
             _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
 
@@ -69,8 +70,5 @@ public sealed class Zx80Machine
             Cpu.Step();
     }
 
-    /// <summary>
-    /// Renders the current state of the display file to the video sink.
-    /// </summary>
     public void RenderFrame(IVideoSink sink) => _video.Render(sink);
 }
