@@ -135,8 +135,8 @@ public class ZxSpectrumMachineTests
         Assert.NotNull(mockAudio.LastSamples);
         Assert.True(mockAudio.LastSamples.Length > 0);
         
-        // At least some samples should be 'Volume' (12000)
-        Assert.Contains(mockAudio.LastSamples, s => s == 12000);
+        // At least some samples should be 'Volume' (9 * 1600 = 14400)
+        Assert.Contains(mockAudio.LastSamples, s => s == 14400);
     }
 
     private class MockVideoSink : IVideoSink

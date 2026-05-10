@@ -68,8 +68,11 @@ internal sealed class ZxSpectrumPortBus : IPortBus
             
             if (_beeper is not null && _getCycles is not null)
             {
-                // Mix bit 3 and 4 for audio output
-                _beeper.SetLevel(_getCycles(), MicState || SpeakerState);
+                // Mix bit 3 and 4 for audio output.
+                // On real hardware, Speaker (bit 4) is significantly louder.
+                // We use a relative scale of 9:1.
+                int level = (SpeakerState ? 9 : 0) + (MicState ? 1 : 0);
+                _beeper.SetLevel(_getCycles(), level);
             }
 
             if (_tape is not null)
