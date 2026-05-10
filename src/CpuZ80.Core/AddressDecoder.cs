@@ -4,50 +4,51 @@ namespace CpuZ80.Core;
 /// Routes CPU bus traffic to hardware components by address range.
 /// Multiple ranges may be registered; the last registration wins on overlap.
 /// Unmapped reads return 0xFF (open bus); unmapped writes are silent.
+/// Supports byte-level granularity for address mappings.
 /// </summary>
 public sealed class AddressDecoder : IBus
 {
-    private readonly struct PageEntry
+    private readonly struct Mapping
     {
         public readonly IBus? Device;
         public readonly ushort BaseAddress;
 
-        public PageEntry(IBus? device, ushort baseAddress)
+        public Mapping(IBus? device, ushort baseAddress)
         {
             Device = device;
             BaseAddress = baseAddress;
         }
     }
 
-    private readonly PageEntry[] _pages = new PageEntry[256];
+    // 64 KB lookup table for byte-level granularity.
+    // Memory overhead is ~512 KB (65536 * 8 bytes), which is negligible on modern systems
+    // and provides the fastest possible O(1) routing.
+    private readonly Mapping[] _map = new Mapping[65536];
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
     public void Map(ushort from, ushort to, IBus device)
     {
-        if (from % 256 != 0 || (to & 0xFF) != 0xFF)
+        if (from > to)
         {
-            throw new ArgumentException("Address mapping must be page-aligned (256-byte increments).");
+            throw new ArgumentException("Start address ('from') must be less than or equal to end address ('to').");
         }
 
-        int startPage = from >> 8;
-        int endPage = to >> 8;
-
-        for (int i = startPage; i <= endPage; i++)
+        for (int i = from; i <= to; i++)
         {
-            _pages[i] = new PageEntry(device, from);
+            _map[i] = new Mapping(device, from);
+            if (i == 65535) break; // Avoid overflow in ushort loop if 'to' is FFFF
         }
     }
 
     public byte Read(ushort address)
     {
-        var entry = _pages[address >> 8];
-        return entry.Device is not null ? entry.Device.Read((ushort)(address - entry.BaseAddress)) : (byte)0xFF;
+        var mapping = _map[address];
+        return mapping.Device is not null ? mapping.Device.Read((ushort)(address - mapping.BaseAddress)) : (byte)0xFF;
     }
 
     public void Write(ushort address, byte value)
     {
-        var entry = _pages[address >> 8];
-        entry.Device?.Write((ushort)(address - entry.BaseAddress), value);
+        var mapping = _map[address];
+        mapping.Device?.Write((ushort)(address - mapping.BaseAddress), value);
     }
 }
-

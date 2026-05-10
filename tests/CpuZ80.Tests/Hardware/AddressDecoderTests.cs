@@ -1,108 +1,101 @@
-using CpuZ80.Core;
 using Xunit;
+using CpuZ80.Core;
 
 namespace CpuZ80.Tests;
 
 public class AddressDecoderTests
 {
-    [Fact]
-    public void Read_SingleMapping_ReturnsDeviceData()
+    private class MockBus : IBus
     {
-        var ram = new Ram(0x100);
-        ram.Write(0x0010, 0xAB);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x0000, 0x00FF, ram);
-        Assert.Equal(0xAB, decoder.Read(0x0010));
+        public byte LastReadOffset;
+        public ushort LastWriteOffset;
+        public byte LastWriteValue;
+        public byte ReadValue;
+
+        public byte Read(ushort offset) { LastReadOffset = (byte)offset; return ReadValue; }
+        public void Write(ushort offset, byte value) { LastWriteOffset = offset; LastWriteValue = value; }
+    }
+
+    private readonly AddressDecoder _decoder;
+    private readonly MockBus _mockDevice;
+
+    public AddressDecoderTests()
+    {
+        _decoder = new AddressDecoder();
+        _mockDevice = new MockBus();
     }
 
     [Fact]
-    public void Write_SingleMapping_WritesToDevice()
+    public void Read_UnmappedAddress_ReturnsFF()
     {
-        var ram = new Ram(0x100);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x0000, 0x00FF, ram);
-        decoder.Write(0x0010, 0xCD);
-        Assert.Equal(0xCD, ram.Read(0x0010));
+        Assert.Equal(0xFF, _decoder.Read(0x1000));
     }
 
     [Fact]
-    public void Read_Unmapped_Returns0xFF()
+    public void Write_UnmappedAddress_DoesNothing()
     {
-        var decoder = new AddressDecoder();
-        Assert.Equal(0xFF, decoder.Read(0x1000));
+        _decoder.Write(0x1000, 0x42);
+        // No exception
     }
 
     [Fact]
-    public void Write_Unmapped_IsSilent()
+    public void Map_ReadWrite_RoutesToDevice()
     {
-        var decoder = new AddressDecoder();
-        var ex = Record.Exception((Action)(() => decoder.Write(0x1000, 0x42)));
-        Assert.Null(ex);
+        _decoder.Map(0x1000, 0x10FF, _mockDevice);
+
+        _mockDevice.ReadValue = 0xAA;
+        Assert.Equal(0xAA, _decoder.Read(0x1005));
+        Assert.Equal(0x05, _mockDevice.LastReadOffset);
+
+        _decoder.Write(0x100A, 0x55);
+        Assert.Equal(0x0A, _mockDevice.LastWriteOffset);
+        Assert.Equal(0x55, _mockDevice.LastWriteValue);
     }
 
     [Fact]
-    public void Read_MultipleNonOverlapping_RoutesCorrectly()
+    public void Map_Overlapping_LastWins()
     {
-        var ram1 = new Ram(0x100);
-        var ram2 = new Ram(0x100);
-        ram1.Write(0x0000, 0x11);
-        ram2.Write(0x0000, 0x22);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x0000, 0x00FF, ram1);
-        decoder.Map(0x0100, 0x01FF, ram2);
-        Assert.Equal(0x11, decoder.Read(0x0000));
-        Assert.Equal(0x22, decoder.Read(0x0100));
+        var mock1 = new MockBus();
+        var mock2 = new MockBus();
+
+        _decoder.Map(0x1000, 0x1FFF, mock1);
+        _decoder.Map(0x1800, 0x18FF, mock2);
+
+        mock1.ReadValue = 0x11;
+        mock2.ReadValue = 0x22;
+
+        // Address 0x1800 should go to mock2 (offset 0)
+        Assert.Equal(0x22, _decoder.Read(0x1800));
+        Assert.Equal(0x00, mock2.LastReadOffset);
+
+        // Address 0x1100 should go to mock1 (offset 0x100)
+        Assert.Equal(0x11, _decoder.Read(0x1100));
+        Assert.Equal(0x00, mock1.LastReadOffset); // 0x1100 - 0x1000 = 0x100. ushort (256)
     }
 
     [Fact]
-    public void Read_Overlap_LastRegistrationWins()
+    public void Map_InvalidRange_ThrowsArgumentException()
     {
-        var first = new Ram(0x100);
-        var second = new Ram(0x100);
-        first.Write(0x0000, 0x11);
-        second.Write(0x0000, 0x22);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x0000, 0x00FF, first);
-        decoder.Map(0x0000, 0x00FF, second);
-        Assert.Equal(0x22, decoder.Read(0x0000));
+        Assert.Throws<ArgumentException>(() => _decoder.Map(0x2000, 0x1000, _mockDevice));
     }
 
     [Fact]
-    public void Device_SeesZeroBasedOffset()
+    public void Map_ByteAlignedRange_Works()
     {
-        var ram = new Ram(0x100);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x4000, 0x40FF, ram);
-        decoder.Write(0x4001, 0x55);
-        Assert.Equal(0x55, ram.Read(0x0001));
-        Assert.Equal(0x00, ram.Read(0x4001 - 0x4000 + 1)); // same thing expressed differently
+        // TD-007 implementation: allow byte-level granularity
+        _decoder.Map(0x1001, 0x1001, _mockDevice);
+        
+        _mockDevice.ReadValue = 0x77;
+        Assert.Equal(0x77, _decoder.Read(0x1001));
+        Assert.Equal(0xFF, _decoder.Read(0x1000));
+        Assert.Equal(0xFF, _decoder.Read(0x1002));
     }
 
     [Fact]
-    public void Map_FromNotPageAligned_ThrowsArgumentException()
+    public void Map_FullRange_Works()
     {
-        var ram = new Ram(0x100);
-        var decoder = new AddressDecoder();
-        var ex = Assert.Throws<ArgumentException>(() => decoder.Map(0x0001, 0x00FF, ram));
-        Assert.Equal("Address mapping must be page-aligned (256-byte increments).", ex.Message);
-    }
-
-    [Fact]
-    public void Map_ToNotPageAligned_ThrowsArgumentException()
-    {
-        var ram = new Ram(0x100);
-        var decoder = new AddressDecoder();
-        var ex = Assert.Throws<ArgumentException>(() => decoder.Map(0x0000, 0x00FE, ram));
-        Assert.Equal("Address mapping must be page-aligned (256-byte increments).", ex.Message);
-    }
-
-    [Fact]
-    public void Map_PageAligned_Succeeds()
-    {
-        var ram = new Ram(0x100);
-        var decoder = new AddressDecoder();
-        decoder.Map(0x0000, 0x00FF, ram); // Should not throw
-        decoder.Map(0x4000, 0x4FFF, ram); // Should not throw
-        decoder.Map(0x0000, 0xFFFF, ram); // Should not throw
+        _decoder.Map(0x0000, 0xFFFF, _mockDevice);
+        _mockDevice.ReadValue = 0x99;
+        Assert.Equal(0x99, _decoder.Read(0xFFFF));
     }
 }

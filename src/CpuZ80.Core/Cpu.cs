@@ -63,8 +63,8 @@ public sealed partial class Cpu
     public ushort DE { get => (ushort)((D << 8) | E); set { D = (byte)(value >> 8); E = (byte)value; } }
     public ushort HL { get => (ushort)((H << 8) | L); set { H = (byte)(value >> 8); L = (byte)value; } }
 
-    public byte I;
-    public byte R;
+    public byte I { get; internal set; }
+    public byte R { get; internal set; }
 
     public ushort IX { get => _ix; set => _ix = value; }
     public ushort IY { get => _iy; set => _iy = value; }
@@ -75,20 +75,20 @@ public sealed partial class Cpu
 
     public ulong TotalCycles { get; private set; }
     public bool WaitPin { get; set; }
+    public int WaitCycles { get; set; }
 
     private void Tick(int count)
     {
         for (int i = 0; i < count; i++)
         {
             TotalCycles++;
-            while (WaitPin)
+            
+            // Wait states can be injected via the binary WaitPin (synchronous)
+            // or by setting WaitCycles (efficient batch wait).
+            while (WaitPin || WaitCycles > 0)
             {
-                // In a real Z80, the WAIT pin is sampled on the falling edge of T2
-                // and every subsequent T-state until it goes high.
-                // We model this by spinning (in a single-threaded context) or
-                // the machine could set/clear this pin between Step calls.
-                // For high-performance emulation, machines typically calculate
-                // contention upfront, but this provides the primitive.
+                if (WaitCycles > 0) WaitCycles--;
+                TotalCycles++;
             }
         }
     }
