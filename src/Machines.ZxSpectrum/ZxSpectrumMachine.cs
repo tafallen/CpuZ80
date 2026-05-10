@@ -16,6 +16,7 @@ public sealed class ZxSpectrumMachine
     public Ram Ram { get; }
 
     private readonly ZxSpectrumPortBus _ports;
+    private readonly ZxSpectrumCpuHost _host;
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -31,8 +32,9 @@ public sealed class ZxSpectrumMachine
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
         _ports = new ZxSpectrumPortBus(kbAdapter, tape);
+        _host  = new ZxSpectrumCpuHost();
 
-        Cpu = new Cpu(bus, _ports);
+        Cpu = new Cpu(bus, _ports, _host);
     }
 
     public void Reset()
@@ -44,52 +46,8 @@ public sealed class ZxSpectrumMachine
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
     public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
 
+    public byte ReadPort(ushort address) => _ports.In(address);
+    public void WritePort(ushort address, byte value) => _ports.Out(address, value);
+
     public void Step() => Cpu.Step();
-}
-
-internal sealed class ZxSpectrumPortBus : IPortBus
-{
-    private readonly SinclairKeyboardAdapter? _keyboard;
-    private readonly ITapeDevice?             _tape;
-
-    public byte BorderColor { get; private set; }
-
-    public ZxSpectrumPortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null)
-    {
-        _keyboard = keyboard;
-        _tape     = tape;
-    }
-
-    public byte In(ushort port)
-    {
-        byte result = 0xFF;
-        
-        // Keyboard half-row selection via address lines A8-A15
-        if ((port & 0x01) == 0)
-        {
-            result = _keyboard?.Read((byte)(port >> 8)) ?? 0xFF;
-
-            // EAR bit (Tape Input) is on bit 6
-            if (_tape is not null)
-            {
-                if (!_tape.ReadBit()) result &= 0xBF; // EAR bit low
-            }
-        }
-
-        return result;
-    }
-
-    public void Out(ushort port, byte value)
-    {
-        if ((port & 0x01) == 0)
-        {
-            BorderColor = (byte)(value & 0x07);
-            
-            // Speaker (bit 4) and MIC (bit 3)
-            if (_tape is not null)
-            {
-                _tape.WriteBit((value & 0x08) != 0);
-            }
-        }
-    }
 }
