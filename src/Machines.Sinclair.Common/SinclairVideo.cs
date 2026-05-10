@@ -24,6 +24,7 @@ public sealed class SinclairVideo
     private readonly Ram _ram;
     private readonly int _fontOffset;
     private readonly uint[] _pixelBuffer = new uint[TotalWidth * TotalHeight];
+    private readonly byte[] _rowBuffer   = new byte[32];
 
     public SinclairVideo(Rom rom, Ram ram, int fontOffset)
     {
@@ -59,19 +60,19 @@ public sealed class SinclairVideo
 
         for (int charRow = 0; charRow < 24; charRow++)
         {
-            var rowCodes = new byte[32];
+            Array.Clear(_rowBuffer);
             int colCount = 0;
             while (pos < ram.Length && colCount < 32)
             {
                 byte code = ram[pos++];
                 if (code == 0x76) goto rowDone;
-                rowCodes[colCount++] = code;
+                _rowBuffer[colCount++] = code;
             }
             while (pos < ram.Length && ram[pos] != 0x76) pos++;
             if (pos < ram.Length) pos++; 
 
             rowDone:
-            RenderRow(rowCodes, colCount, charRow, rom);
+            RenderRow(_rowBuffer, colCount, charRow, rom);
         }
 
         sink.SubmitFrame(_pixelBuffer, TotalWidth, TotalHeight);
