@@ -67,8 +67,10 @@ public sealed class ZxSpectrumVideo
         {
             for (int charRow = 0; charRow < 8; charRow++)
             {
-                // Base offset for attributes in this character row
+                // Optimization: Attributes are constant for all 8 scanlines of a character row.
+                // Fetch the 32 attributes for this row once.
                 int attrBase = GetAttributeAddress(third, charRow);
+                ReadOnlySpan<byte> rowAttrs = ram.AsSpan(attrBase, 32);
                 
                 for (int scanline = 0; scanline < 8; scanline++)
                 {
@@ -81,7 +83,7 @@ public sealed class ZxSpectrumVideo
                     for (int col = 0; col < 32; col++)
                     {
                         byte bitmap = ram[bitmapBase + col];
-                        byte attr   = ram[attrBase + col];
+                        byte attr   = rowAttrs[col];
 
                         bool bright    = (attr & 0x40) != 0;
                         bool flash     = (attr & 0x80) != 0;
