@@ -49,7 +49,7 @@ if (tapePath is not null)
 // ── build machine ─────────────────────────────────────────────────────────────
 using var host = new RaylibHost("Sinclair ZX80", scale);
 
-var machine = new Zx80Machine(rom, keyboard: host, tape: tape);
+var machine = new Zx80Machine(rom, keyboard: host, audio: host, tape: tape);
 machine.Reset();
 Console.WriteLine($"PC after reset: ${machine.Cpu.PC:X4}  I=${machine.Cpu.I:X2}");
 

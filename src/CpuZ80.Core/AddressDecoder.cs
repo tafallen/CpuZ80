@@ -12,17 +12,19 @@ public sealed class AddressDecoder : IBus
     {
         public readonly IBus? Device;
         public readonly ushort BaseAddress;
+        public readonly ushort AddressMask;
+        public readonly bool IsMirrored;
 
-        public Mapping(IBus? device, ushort baseAddress)
+        public Mapping(IBus? device, ushort baseAddress, ushort addressMask = 0, bool isMirrored = false)
         {
             Device = device;
             BaseAddress = baseAddress;
+            AddressMask = addressMask;
+            IsMirrored = isMirrored;
         }
     }
 
     // 64 KB lookup table for byte-level granularity.
-    // Memory overhead is ~512 KB (65536 * 8 bytes), which is negligible on modern systems
-    // and provides the fastest possible O(1) routing.
     private readonly Mapping[] _map = new Mapping[65536];
 
     /// <summary>Register <paramref name="device"/> for addresses [<paramref name="from"/>..<paramref name="to"/>] inclusive.</summary>
@@ -36,19 +38,47 @@ public sealed class AddressDecoder : IBus
         for (int i = from; i <= to; i++)
         {
             _map[i] = new Mapping(device, from);
-            if (i == 65535) break; // Avoid overflow in ushort loop if 'to' is FFFF
+            if (i == 65535) break; 
+        }
+    }
+
+    /// <summary>
+    /// Registers a device with bitmask-based mirroring.
+    /// The device responds if (address &amp; decodeMask) == baseAddress.
+    /// The device receives (address &amp; addressMask) as the internal offset.
+    /// </summary>
+    public void MapMirror(ushort baseAddress, ushort decodeMask, ushort addressMask, IBus device)
+    {
+        for (int i = 0; i < 65536; i++)
+        {
+            if ((i & decodeMask) == baseAddress)
+            {
+                _map[i] = new Mapping(device, baseAddress, addressMask, true);
+            }
         }
     }
 
     public byte Read(ushort address)
     {
         var mapping = _map[address];
-        return mapping.Device is not null ? mapping.Device.Read((ushort)(address - mapping.BaseAddress)) : (byte)0xFF;
+        if (mapping.Device is null) return 0xFF;
+        
+        ushort offset = mapping.IsMirrored 
+            ? (ushort)(address & mapping.AddressMask)
+            : (ushort)(address - mapping.BaseAddress);
+            
+        return mapping.Device.Read(offset);
     }
 
     public void Write(ushort address, byte value)
     {
         var mapping = _map[address];
-        mapping.Device?.Write((ushort)(address - mapping.BaseAddress), value);
+        if (mapping.Device is null) return;
+
+        ushort offset = mapping.IsMirrored 
+            ? (ushort)(address & mapping.AddressMask)
+            : (ushort)(address - mapping.BaseAddress);
+
+        mapping.Device.Write(offset, value);
     }
 }

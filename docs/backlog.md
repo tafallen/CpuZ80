@@ -130,43 +130,6 @@ instruction by instruction.
 - Acceptance: `Machines.Zx80.Tests` project; test constructs machine with a stub ROM,
   calls `Reset()`, and asserts `Cpu.PC` is read from the reset vector.~~ ✓
 
-**Implementation plan — US-201**
-
-_New files:_
-- `src/Machines.Zx80/Machines.Zx80.csproj` — references `CpuZ80.Core` and `Machines.Common`
-- `src/Machines.Zx80/Zx80Machine.cs` — machine compositor
-- `tests/Machines.Zx80.Tests/Machines.Zx80.Tests.csproj` — references `Machines.Zx80` and xUnit
-- `tests/Machines.Zx80.Tests/Zx80MachineTests.cs` — machine tests
-
-_Memory map wired in constructor:_
-```
-0x0000–0x0FFF  Rom  (4K — BASIC/OS ROM image)
-0x4000–0x43FF  Ram  (1K — system variables + display file + BASIC program)
-0x4400–0xFFFF  unmapped → 0xFF
-```
-Note: the ZX80 uses A14-based partial address decoding so the ROM also appears at 0x2000,
-0x8000, and 0xA000, and RAM mirrors throughout 0x4000–0x7FFF and again at 0xC000–0xFFFF.
-The `AddressDecoder` maps only the primary ranges above; mirrors are not needed for correct
-ROM execution but are noted for accuracy if issues arise.
-
-_`Reset()`:_ sets `Cpu.PC = 0x0000`, clears `Cpu.IFF1`/`IFF2`, sets `Cpu.SP = 0xFFFF`,
-sets `Cpu.I = 0x0E` (the ZX80 ROM requires I=0x0E so the character generator reads font
-data from the correct ROM offset at 0x0E00).
-The Z80 has no memory-mapped reset vector — it simply starts execution at address 0.
-
-_`Step()`:_ delegates to `Cpu.Step()`.
-
-_`RunFrame()`:_ steps the CPU for one frame's worth of T-states
-(3,250,000 Hz ÷ 50 Hz = **64,167 T-states**). Halted cycles count toward the frame budget.
-
-_Test cases:_
-1. `Reset_SetsPCToZero` — construct with a minimal 4K ROM stub (all NOPs), call `Reset()`,
-   assert `Cpu.PC == 0x0000`.
-2. `Reset_DisablesInterrupts` — assert `Cpu.IFF1 == false` and `Cpu.IFF2 == false` after reset.
-2a. `Reset_SetsIRegisterTo0x0E` — assert `Cpu.I == 0x0E` after reset.
-3. `Step_ExecutesOneInstruction` — load a NOP at 0x0000, call `Step()`, assert `Cpu.PC == 0x0001`.
-4. `RunFrame_AdvancesCyclesByOneFrame` — call `RunFrame()`, assert `Cpu.TotalCycles >= 64167`.
-
 ---
 
 ~~**US-202 — ZX80 keyboard matrix**
@@ -177,64 +140,6 @@ the ROM BASIC interpreter.
   select the half-row, result byte has bits 0–4 low for pressed keys (active low).
 - Acceptance: tests drive `IPhysicalKeyboard` stubs and assert the correct `IN` result byte
   for each half-row.~~ ✓
-
-**Implementation plan — US-202**
-
-_ZX80 keyboard matrix — half-row to address line and key mapping:_
-
-| A line low | Port high byte | Bit 0 | Bit 1 | Bit 2 | Bit 3 | Bit 4 |
-|---|---|---|---|---|---|---|
-| A8  | 0xFE | Shift | Z | X | C | V |
-| A9  | 0xFD | A | S | D | F | G |
-| A10 | 0xFB | Q | W | E | R | T |
-| A11 | 0xF7 | 1 | 2 | 3 | 4 | 5 |
-| A12 | 0xEF | 0 | 9 | 8 | 7 | 6 |
-| A13 | 0xDF | P | O | I | U | Y |
-| A14 | 0xBF | NEWLINE | L | K | J | H |
-| A15 | 0x7F | Space | Period | M | N | B |
-
-Notes:
-- Bit 0 is the outermost key in each row (SHIFT side on left rows, SPACE/0 side on right rows).
-- The ZX80 has **no Symbol Shift key** — that is a ZX Spectrum addition. Bit 1 of the A15
-  row is the **Period (.)** key.
-- The return key is physically labelled **NEWLINE** on the ZX80 keyboard.
-- A pressed key pulls its result bit **low** (active low); unpressed = 1. Bits 5–7 always 1.
-
-The full 16-bit port address is passed to `IPortBus.In(ushort port)`. The high byte
-selects the half-row(s) — a 0 bit in the high byte activates that row. Multiple rows may
-be selected simultaneously (for compound key detection).
-
-_PC keyboard mapping (`PhysicalKey` enum → ZX80 key):_
-
-| ZX80 key | `PhysicalKey` value |
-|---|---|
-| SHIFT | `LeftShift` |
-| A–Z | `A`–`Z` |
-| 0–9 | `D0`–`D9` |
-| NEWLINE | `Return` |
-| SPACE | `Space` |
-| Period | `Period` |
-
-No ZX80 keys lack a direct PC equivalent — the keyboard is purely alphanumeric plus SHIFT,
-NEWLINE, SPACE, and Period.
-
-_New files:_
-- `src/Machines.Zx80/Zx80KeyboardAdapter.cs` — maps `IPhysicalKeyboard` to half-row bytes
-- `src/Machines.Zx80/Zx80PortBus.cs` — implements `IPortBus`; delegates keyboard reads to
-  `Zx80KeyboardAdapter`, routes tape reads on bit 7 (US-204)
-
-_Changes:_
-- `Zx80Machine` constructor: instantiate `Zx80PortBus` and pass to `Cpu`
-
-_Test cases (in `Zx80MachineTests.cs` or a new `Zx80KeyboardTests.cs`):_
-1. `Keyboard_NoKeysPressed_AllBitsHigh` — construct with no keys held, `IN` any half-row,
-   assert result byte `== 0xFF` (all bits high).
-2. `Keyboard_HalfRow_CorrectBitLow` — for each of the 8 half-rows, press one key via the
-   stub, assert the correct bit (0–4) is low in the result.
-3. `Keyboard_MultipleHalfRowsSelected_CombinesResults` — select two rows simultaneously
-   (both address bits low), assert pressed keys from both rows appear in the result.
-4. `Keyboard_KeyInWrongRow_NotReflected` — press a key, read a different half-row,
-   assert result is 0xFF (key not visible in that row).
 
 ---
 
@@ -249,73 +154,6 @@ is built by scanning display RAM during `RunFrame()` — so that the screen upda
 - Acceptance: integration test with a minimal ROM that writes a known character to display
   RAM; `RenderFrame()` produces the expected pixel pattern.~~ ✓
 
-**Implementation plan — US-203**
-
-_ZX80 display background:_
-The display file lives in RAM; its start address is stored in the two-byte `D_FILE` system
-variable at `0x400C`/`0x400D`. The display file has a variable-length structure:
-- Byte 0: `HALT` (0x76) — display file start marker
-- Then 24 rows, each consisting of 0–32 character codes followed by a `HALT` (0x76)
-  terminator. A full screen uses 32 characters per row; BASIC shortens trailing rows.
-- Minimum size: 25 bytes (all rows empty — just the 25 HALT bytes).
-- Maximum size: 793 bytes (25 HALTs + 768 character bytes).
-
-The character font is embedded in the ROM at `0x0E00–0x0FFF` (8 bytes per character,
-64 characters). The `I` register is permanently set to `0x0E` so the CPU's refresh
-addressing always points into this font table during display generation.
-
-_How the ZX80 display actually works (hardware mechanism):_
-The CPU does not have a special display mode. The ROM's display routine causes the CPU
-to literally execute the display file as instructions. Character codes stored in the display
-file are fetched at addresses in the high address space (the phantom copy ≥ 0x8000). The
-hardware intercepts these high-address M1 fetches and returns `0x00` (NOP) to the CPU
-regardless of the actual character value, while simultaneously latching the character code
-for the video shift register. When the CPU fetches a `HALT` (0x76) byte — the row
-terminator — the hardware lets the real value through, so the CPU actually executes HALT.
-
-**Note: the stock ZX80 has no NMI generator.** NMI is a ZX81 ULA feature (see US-302).
-The ZX80 display blanks whenever BASIC is running; the display is only visible while the
-ROM's display routine is executing the display file. No NMI injection is needed in
-`RunFrame()` for the ZX80.
-
-The NMI mechanism (R bit 6 falling edge, gated by port writes OUT FEh/FDh) belongs
-entirely to the ZX81 implementation (US-302).
-
-_`RunFrame()`:_ no changes needed beyond what US-201 already provides.
-
-_`RenderFrame(IVideoSink sink)` — new method:_
-- Store `_romBytes` as a `byte[]` field in the constructor (copied before passing to
-  `new Rom(rom)`) so font data is accessible without going through the bus.
-- Allocate a 256×192 `uint[]` pixel buffer (ARGB32). This is decoupled from CPU
-  execution — read the display file directly from RAM.
-- Read `D_FILE` pointer from `Ram.RawBytes` at offset `0x000C`/`0x000D` (= RAM
-  addresses `0x400C`/`0x400D`, little-endian word). Subtract `0x4000` to get offset
-  into `Ram.RawBytes`.
-- Skip the initial HALT byte. For each of the 24 rows, read character codes until the
-  next HALT terminator; pad short rows with space (0x00) to fill 32 columns.
-- For each character code:
-  - Extract the base code: `base = charCode & 0x3F` (lower 6 bits index the character).
-  - Determine inversion: `inverted = (charCode & 0x80) != 0` (bit 7 set = inverse video).
-  - Look up 8 font bytes from `_romBytes` at `0x0E00 + (base * 8)`.
-  - For each font byte, expand bits to pixels: bit 7 = leftmost pixel.
-    If `inverted`, swap ink and paper colours.
-  - Ink = black (`0xFF000000`), paper = white (`0xFFFFFFFF`).
-- Call `sink.SubmitFrame(pixels, 256, 192)`.
-
-_New files:_
-- No new source files — all logic added to `Zx80Machine.cs`.
-
-_Test cases:_
-1. `RenderFrame_AllSpaces_ProducesWhiteFrame` — fill display file with space characters
-   (0x00), call `RenderFrame()`, assert all pixels are `0xFFFFFFFF`.
-2. `RenderFrame_KnownCharacter_CorrectPixelPattern` — write a character with a known
-   8×8 font pattern into the display file; assert the corresponding 8×8 pixel block
-   matches the expected dot pattern (bit 7 of font byte = leftmost pixel).
-3. `RenderFrame_InvertedCharacter_SwapsInkAndPaper` — write a character code with
-   bit 7 set (e.g. 0x80 = inverted space); assert those pixels are black (`0xFF000000`)
-   rather than white.
-4. `RenderFrame_CorrectDimensions` — assert submitted frame is exactly 256×192.
-
 ---
 
 ~~**US-204 — ZX80 tape**
@@ -324,67 +162,13 @@ memory-mapped I/O so that `.o` / `.80` tape images can be loaded into the emulat
 - Acceptance: test loads a known tape image and asserts that RAM contains the expected bytes
   after the ROM load routine completes.~~ ✓
 
-**Implementation plan — US-204**
-
-_ZX80 tape I/O:_
-The ZX80 uses a single-bit serial interface:
-- **Save**: ROM pulses the MIC output (port `0xFE` bit 3, `OUT`) to write bits to tape.
-- **Load**: ROM reads the EAR input (port `0xFE` bit 6, `IN`) to read bits from tape.
-  Bit 6 low = pulse present; bit 6 high = silence. (Note: some sources cite bit 7; the
-  ROM samples bit 6 — verified against ZX80 ROM disassembly.)
-
-_ZX80 tape encoding (pulse-count):_
-- **0 bit**: 4 pulses — each pulse is 150 µs HIGH then 150 µs LOW (~300 µs/pulse)
-- **1 bit**: 9 pulses — same 150 µs HIGH + 150 µs LOW per pulse
-- Bits are transmitted **MSB first** within each byte.
-- Average transfer rate: ~307 baud.
-- **No leader tone** — the ROM jumps straight into sampling data pulses. There is no
-  initial sync or header block.
-
-_ZX80 tape file format:_
-`.o` (also seen as `.80`) — **not `.p`**, which is the ZX81 format.
-- Raw memory dump of RAM from `0x4000` upward (system variables + display file +
-  BASIC program + variables).
-- **No file header, no filename** — the file begins at byte 0x4000 content directly.
-- Load length is determined by the E_LINE system variable at RAM offset `0x400A`
-  (2 bytes, little-endian). Length = E_LINE_value − 0x4000. The `Zx80TapeAdapter`
-  reads this from its own byte array after loading system variables to know when to stop.
-
-_Implementation:_
-- `Zx80PortBus.In(port)`: if EAR input is addressed, return
-  `ITapeDevice.ReadBit() ? 0xFF : 0xBF` (bit 6 low = pulse detected).
-- `Zx80PortBus.Out(port, value)`: if MIC output is addressed, call
-  `ITapeDevice.WriteBit((value & 0x08) != 0)`.
-- Provide a `Zx80TapeAdapter` that implements `ITapeDevice` and streams bits from a
-  `.o` file byte array using the pulse-count encoding above (MSB first, 4/9 pulses per bit).
-- `ITapeDevice.Load(Stream data)` accepts the `.o` file; the adapter buffers it and
-  plays back pulses on `ReadBit()` calls.
-
-_New files:_
-- `src/Machines.Zx80/Zx80TapeAdapter.cs` — `ITapeDevice` implementation for `.o` files
-
-_Changes:_
-- `Zx80PortBus.cs` — add EAR read and MIC write routing
-
-_Test cases:_
-1. `Tape_ReadBit_ReturnsHighWhenNoTape` — with no tape device, `IN 0xFE` bit 6 is high
-   (EAR = 1, no signal).
-2. `Tape_ReadBit_ReturnsLowOnPulse` — stub `ITapeDevice.ReadBit()` returning false;
-   assert bit 6 of `IN 0xFE` is low.
-3. `Tape_WriteBit_ForwardedToDevice` — `OUT 0xFE` with bit 3 set; assert stub
-   `ITapeDevice.WriteBit(true)` was called.
-4. `TapeAdapter_DecodesZeroBit` — feed 4 pulses to adapter; assert `ReadBit()` returns false.
-5. `TapeAdapter_DecodeOneBit` — feed 9 pulses to adapter; assert `ReadBit()` returns true.
-6. `TapeAdapter_LoadFile_PopulatesRam` — load a known `.o` file via the ROM load routine
-   (or directly via `ITapeDevice.Load`); assert RAM at 0x4000+ matches expected bytes.
-
 ---
 
 ### Epic 3 — ZX81 Machine
 
 The ZX81 is a functional evolution of the ZX80. Its most significant change is the ULA's ability to generate NMIs to synchronize video generation with the CPU, allowing the "SLOW" mode where programs continue to run during display.
 
-**US-301 — Machines.Zx81 project skeleton**
+~~**US-301 — Machines.Zx81 project skeleton**
 Establish the Sinclair ZX81 machine compositor. This story sets up the foundational hardware wiring, including the expanded 8K ROM and the standard 1K RAM (with partial decoding mirrors). It ensures the CPU initializes in the correct state for the ZX81's specific ROM firmware requirements.
 - **Tasks**:
     - Create `Machines.Zx81` and its unit test project.
@@ -394,9 +178,9 @@ Establish the Sinclair ZX81 machine compositor. This story sets up the foundatio
 - **Acceptance**:
     - `Zx81Machine` instantiates with 8K ROM.
     - `Reset()` sets `PC == 0` and `I == 0x1E`.
-    - `Step()` and `RunFrame()` advance T-states correctly (65,000 T-states per frame).
+    - `Step()` and `RunFrame()` advance T-states correctly (65,000 T-states per frame).~~ ✓
 
-**US-302 — ZX81 ULA: SLOW/FAST Mode & NMI**
+~~**US-302 — ZX81 ULA: SLOW/FAST Mode & NMI**
 Model the core innovation of the ZX81 ULA: the Non-Maskable Interrupt (NMI) generator. This allows the machine to operate in "SLOW" mode (continuous display) or "FAST" mode (display blanked during execution). The emulator must monitor I/O port writes to toggle this generator and inject NMIs at precise intervals.
 - **Tasks**:
     - Implement `Zx81CpuHost : ICpuHost`.
@@ -406,9 +190,9 @@ Model the core innovation of the ZX81 ULA: the Non-Maskable Interrupt (NMI) gene
 - **Acceptance**:
     - Port writes correctly toggle `NmiEnabled` in machine state.
     - Periodical NMIs delivered in SLOW mode; zero NMIs in FAST mode.
-    - CPU halts correctly when entering NMI handler for video.
+    - CPU halts correctly when entering NMI handler for video.~~ ✓
 
-**US-303 — ZX81 Video Rendering**
+~~**US-303 — ZX81 Video Rendering**
 Implement the video generation subsystem for the ZX81. Unlike the ZX80's fixed-length display file, the ZX81 supports "collapsed" display files where lines can be shorter than 32 characters to save precious RAM. Rendering must parse this format and handle inverse video (Bit 7).
 - **Tasks**:
     - Implement `Zx81Video` using composition.
@@ -418,9 +202,9 @@ Implement the video generation subsystem for the ZX81. Unlike the ZX80's fixed-l
 - **Acceptance**:
     - `RenderFrame()` generates pixel-perfect images for standard and collapsed display files.
     - Inverse characters render correctly.
-    - Accurately uses `I` register offset for font lookup.
+    - Accurately uses `I` register offset for font lookup.~~ ✓
 
-**US-304 — ZX81 Keyboard & Tape**
+~~**US-304 — ZX81 Keyboard & Tape**
 Implement user input and persistent storage support for the ZX81. This involves wiring the 8x5 keyboard matrix and supporting the `.p` tape file format, which is the ZX81's standard memory snapshot format.
 - **Tasks**:
     - Reuse `Zx80KeyboardAdapter` matrix logic.
@@ -429,7 +213,17 @@ Implement user input and persistent storage support for the ZX81. This involves 
     - Implement bit-count encoding (EAR on bit 6, MIC on bit 3).
 - **Acceptance**:
     - `IN 0xFE` reflects host key states.
-    - Loading `.p` file correctly populates RAM; machine continues BASIC execution.
+    - Loading `.p` file correctly populates RAM; machine continues BASIC execution.~~ ✓
+
+**US-305 — ZX81 16K RAM Pack**
+Model the iconic 16K RAM expansion module. This disables the 1K internal RAM mirrors and provides a contiguous 16K block of memory at `$4000-$7FFF`.
+- **Tasks**:
+    - Add `is16K` option to `Zx81Machine` constructor.
+    - If enabled, map a 16K `Ram` instance to the full `$4000-$7FFF` range.
+    - Disable partial decoding mirrors that would otherwise appear in this range.
+- **Acceptance**:
+    - Machine detects 16K RAM via standard BASIC `PEEK` tests.
+    - High-RAM software (e.g. 3D Monster Maze) executes without corruption.
 
 ---
 
@@ -437,7 +231,7 @@ Implement user input and persistent storage support for the ZX81. This involves 
 
 The ZX Spectrum introduces color attributes, maskable interrupts, beeper audio, and complex ULA memory contention. This epic focuses on the 48K model.
 
-**US-401 — Machines.ZxSpectrum project skeleton**
+~~**US-401 — Machines.ZxSpectrum project skeleton**
 Establish the Sinclair ZX Spectrum 48K machine compositor. This wires the 16K ROM and 48K RAM into a contiguous 64K address space and initializes the CPU state for the Spectrum ROM.
 - **Tasks**:
     - Create `src/Machines.ZxSpectrum` and `tests/Machines.ZxSpectrum.Tests`.
@@ -446,9 +240,9 @@ Establish the Sinclair ZX Spectrum 48K machine compositor. This wires the 16K RO
 - **Acceptance**:
     - `ZxSpectrumMachine` instantiates correctly.
     - `Reset()` sets `PC == 0` and `I == 0x3F`.
-    - `ReadMemory` returns ROM bytes at `$0000` and RAM bytes at `$4000`.
+    - `ReadMemory` returns ROM bytes at `$0000` and RAM bytes at `$4000`.~~ ✓
 
-**US-402 — Spectrum Video & Attribute Rendering**
+~~**US-402 — Spectrum Video & Attribute Rendering**
 Implement the 256x192 attribute-based display. The Spectrum uses a bitmap (`$4000-$57FF`) and a color attribute buffer (`$5800-$5AFF`). Rendering must handle Ink, Paper, Bright, and Flash bits.
 - **Tasks**:
     - Create `ZxSpectrumVideo` using the composition pattern.
@@ -458,9 +252,9 @@ Implement the 256x192 attribute-based display. The Spectrum uses a bitmap (`$400
 - **Acceptance**:
     - `RenderFrame()` produces a 256x192 ARGB32 image.
     - Color attributes correctly applied to 8x8 pixel blocks.
-    - Integration test verifies correct color output for known bitmap/attribute data.
+    - Integration test verifies correct color output for known bitmap/attribute data.~~ ✓
 
-**US-403 — 50Hz Interrupt Timing**
+~~**US-403 — 50Hz Interrupt Timing**
 Implement the ULA's 50Hz maskable interrupt (INT) signal. This drives the ROM's keyboard scanning and flash timing.
 - **Tasks**:
     - In `RunFrame`, assert the Z80 `INT` line once per frame (~69,888 T-states).
@@ -468,9 +262,9 @@ Implement the ULA's 50Hz maskable interrupt (INT) signal. This drives the ROM's 
     - Model Interrupt Mode 1 (jumps to `$0038`).
 - **Acceptance**:
     - The CPU jumps to `$0038` periodically during execution.
-    - ROM system variable `FRAMES` (`$5C78`) increments correctly over time.
+    - ROM system variable `FRAMES` (`$5C78`) increments correctly over time.~~ ✓
 
-**US-404 — Beeper Audio**
+~~**US-404 — Beeper Audio**
 Implement the single-bit speaker output. The Spectrum generates audio by rapidly toggling bit 4 of Port `$FE`.
 - **Tasks**:
     - Capture `OUT 0xFE` bit 4 transitions.
@@ -478,9 +272,9 @@ Implement the single-bit speaker output. The Spectrum generates audio by rapidly
     - Resample the bitstream to 44.1kHz signed 16-bit mono for `IAudioSink`.
 - **Acceptance**:
     - Machine exposes an `IAudioSink` integration.
-    - Verified by generating a fixed-frequency square wave and asserting the output samples.
+    - Verified by generating a fixed-frequency square wave and asserting the output samples.~~ ✓
 
-**US-405 — ULA Memory Contention**
+~~**US-405 — ULA Memory Contention**
 Model the Spectrum's "Contended RAM" behavior. The ULA stops the CPU when both are accessing the first 16K bank of RAM (`$4000-$7FFF`) during video generation.
 - **Tasks**:
     - Implement `ZxSpectrumCpuHost : ICpuHost`.
@@ -488,9 +282,9 @@ Model the Spectrum's "Contended RAM" behavior. The ULA stops the CPU when both a
     - Inject `WaitCycles` based on the current T-state relative to the frame start (ULA scanline position).
 - **Acceptance**:
     - Benchmarks show correct execution slowdown in contended RAM compared to high RAM (`$8000+`).
-    - Timing-sensitive code (e.g. music routines) plays at the correct pitch.
+    - Timing-sensitive code (e.g. music routines) plays at the correct pitch.~~ ✓
 
-**US-406 — Snapshots & Keyboard**
+~~**US-406 — Snapshots & Keyboard**
 Implement user input and standard Spectrum snapshot loading (.SNA).
 - **Tasks**:
     - Reuse `SinclairKeyboardAdapter` (Spectrum adds "Symbol Shift" and "Caps Shift" to the same matrix).
@@ -498,30 +292,127 @@ Implement user input and standard Spectrum snapshot loading (.SNA).
     - Wire Port `$FE` bit 6 for EAR (tape input).
 - **Acceptance**:
     - `IN 0xFE` correctly reads keys (including Symbol Shift).
-    - Loading a `.SNA` file successfully restores a running game or program.
+    - Loading a `.SNA` file successfully restores a running game or program.~~ ✓
+
+**US-407 — Spectrum Tape Support (.TAP/.TZX)**
+Implement the Spectrum's specific pulse-width modulation (PWM) tape encoding. Unlike the ZX80/81, the Spectrum uses varied pulse lengths for '0' and '1' bits and includes a pilot tone.
+- **Tasks**:
+    - Create `ZxSpectrumTapeAdapter : ITapeDevice`.
+    - Implement pilot tone, sync pulses, and data bit timing (855/1710 µs).
+    - Support the standard **.TAP** block format.
+- **Acceptance**:
+    - ROM `LOAD ""` routine successfully loads and runs software from a `.TAP` file.
+
+**US-408 — Kempston Joystick Interface**
+Implement the most popular Spectrum joystick standard. The Kempston interface returns joystick state on Port `$1F`.
+- **Tasks**:
+    - Map host arrow keys/gamepad to a bit-mask (Right=0, Left=1, Down=2, Up=3, Fire=4).
+    - Map Port `$1F` (all address lines ignored) to this state.
+- **Acceptance**:
+    - Games configured for "Kempston" respond to host input.
 
 ---
 
-### Epic 5 — CP/M
+### Epic 5 — Amstrad CPC 464 / 6128
 
-**US-501 — CP/M machine skeleton**
-As a developer, I want a `Machines.Cpm` project with a `CpmMachine` that loads a flat
-binary into RAM at `0x0100` and provides a minimal BDOS shim at `0x0000` and `0x0005` —
-so that CP/M `.com` programs can run under the emulator.
-- Constructor: `CpmMachine(byte[] program)`
-- Acceptance: load a minimal "Hello World" `.com` binary; run until PC hits `0x0000`;
-  assert the expected string was output via the BDOS `C_WRITESTR` call.
+The Amstrad CPC series features a 4MHz Z80A, the Amstrad Gate Array, a 6845 CRTC for video, and an AY-3-8912 for 3-channel sound. This epic focuses on the CPC 464 (64K) base model with 6128 (128K) expandability.
 
-**US-502 — Console I/O**
-As a user, I want BDOS function 2 (C_WRITE) and function 9 (C_WRITESTR) mapped to host
-`stdout` — so that CP/M programs that print to the console work from the command line.
-- Acceptance: integration test captures stdout and asserts the correct output.
+**US-501 — Machines.AmstradCPC project skeleton**
+Establish the Amstrad CPC motherboard compositor and memory map. The CPC 464 has a complex memory layout where 64K RAM is contiguous, but the OS ROM (Lower) and BASIC/DOS ROMs (Upper) are banked in/out of the Z80's address space.
+- **Tasks**:
+    - Create `src/Machines.AmstradCPC` and its unit test project.
+    - Configure `AddressDecoder` for 64K RAM and the banking system:
+        - **Lower ROM**: 16K at `$0000-$3FFF`.
+        - **Upper ROM**: 16K at `$C000-$FFFF` (supports up to 252 different ROMs via banking).
+    - Implement the `Reset()` logic: PC = `$0000`, 4MHz clock frequency.
+- **Acceptance**:
+    - `AmstradCpcMachine` can be instantiated with OS and BASIC ROM images.
+    - Tests verify that `ReadMemory` returns ROM bytes when banking is enabled, and RAM bytes when disabled.
+    - CPU `TotalCycles` advances at exactly 4 T-states per µs (4.0 MHz).
 
-**US-503 — Disk I/O abstraction**
-As a user, I want BDOS disk functions (open, read, write sector) backed by a virtual disk
-image (e.g. `.img` file) — so that CP/M programs that access the filesystem work.
-- Acceptance: test mounts a minimal disk image, runs a program that reads a file, and
-  asserts the correct data is returned.
+**US-502 — Amstrad Gate Array: Palette, Banking & Interrupts**
+Implement the custom Amstrad Gate Array (the "brain"). It manages the 27-color palette, the memory configuration, and the unique hsync-based interrupt counter.
+- **Tasks**:
+    - Create `AmstradGateArray : ICpuHost` chip class.
+    - Implement Port `$7Fxx` decoding (I/O range `$4000-$7FFF` but practically `$7Fxx`):
+        - **PEN Selection**: Select which of the 16 palette entries (or border) is being modified.
+        - **Color Assignment**: Map one of the 27 hardware colors to the selected PEN.
+        - **ROM/RAM Banking**: Control the visibility of Lower and Upper ROMs.
+    - Implement the **HSYNC Interrupt Counter**:
+        - Count HSYNC signals from the CRTC.
+        - Assert `INT` every 52 scanlines.
+        - Clear `INT` when the counter is reset or the CPU acknowledges.
+- **Acceptance**:
+    - Port writes correctly update the 16-color internal palette registers.
+    - The CPU receives maskable interrupts at a frequency of 300.3 Hz (approx every 13,312 T-states).
+    - Tests confirm that disabling the Lower ROM correctly exposes the underlying RAM.
+
+**US-503 — CRTC 6845 Video Rendering**
+Implement the video generation using the 6845 CRTC. The CPC utilizes the CRTC to scan memory and the Gate Array to convert those bytes into pixels based on the active mode.
+- **Tasks**:
+    - Create `AmstradCrtc6845` chip class.
+    - Implement the 3 CPC Graphic Modes:
+        - **Mode 0**: 160x200, 16 colors (4 bits per pixel).
+        - **Mode 1**: 320x200, 4 colors (2 bits per pixel).
+        - **Mode 2**: 640x200, 2 colors (1 bit per pixel).
+    - Implement non-linear memory fetching: CPC pixels are interleaved within characters ($800 bytes per scanline offset).
+    - Support the border region rendering using the Gate Array's border color.
+- **Acceptance**:
+    - `RenderFrame()` produces a high-fidelity 768x272 image (including border).
+    - All three modes render bit-perfect patterns compared to hardware.
+    - Hardware scrolling (via CRTC registers 12/13) works correctly.
+
+**US-504 — PSG AY-3-8912 Audio**
+Implement the 3-channel sound generator. The AY chip provides music, sound effects, and 8-bit I/O ports. It is accessed indirectly via the 8255 PPI.
+- **Tasks**:
+    - Create `Ay38912` chip class.
+    - Implement 3 square-wave oscillators with 12-bit period precision.
+    - Implement the noise generator and programmable envelopes.
+    - Resample the 3-channel analog-mixed output to 44.1kHz 16-bit mono/stereo.
+- **Acceptance**:
+    - Verified by playing a `.YM` or BASIC music routine and asserting frequency accuracy.
+    - The PSG's 8-bit I/O port correctly communicates with the keyboard matrix.
+
+**US-505 — PPI 8255: Keyboard & PSG Control**
+Implement the Intel 8255 Peripheral Programmable Interface. This chip acts as the bridge between the CPU and the rest of the CPC hardware.
+- **Tasks**:
+    - Create `Intel8255` chip class.
+    - Map the three 8-bit ports:
+        - **Port A**: Bi-directional data to/from the AY-3-8912.
+        - **Port B**: Input for VSYNC, Tape, and Expansion/Jumper settings.
+        - **Port C**: Control for Keyboard row selection and AY chip BUSDIR/BC1 signals.
+    - Map the 10-row keyboard matrix.
+- **Acceptance**:
+    - Keyboard scanning via PPI Port C and PSG Port A correctly identifies multiple key presses.
+    - VSYNC bit in Port B correctly reflects the CRTC's vertical sync state.
+    - Firmware correctly initializes the sound chip through the PPI protocol.
+
+**US-506 — Amstrad Tape Drive (.CDT)**
+Implement the tape bitstreaming logic for the CPC 464. The Amstrad uses a frequency-modulated signal for tape storage, compatible with the Sinclair standard but with specific block headers.
+- **Tasks**:
+    - Create `AmstradTapeAdapter : ITapeDevice`.
+    - Support the **.CDT** file format (based on the TZX standard).
+    - Map the TAPE_IN signal to PPI Port B (bit 7) and TAPE_OUT/MOTOR to PPI Port C.
+- **Acceptance**:
+    - `|TAPE` and `RUN"` commands successfully load and execute programs from .CDT images.
+
+**US-507 — FDC 765: Disk Controller (.DSK)**
+Model the NEC µPD765 Floppy Disk Controller (FDC) used in the CPC 6128 and DDI-1 expansion. This is a complex command-driven chip.
+- **Tasks**:
+    - Create `Nec765Fdc` chip class.
+    - Implement the command-state machine (Specify, Seek, Read Sector, etc.).
+    - Support the **.DSK** (Extended DSK) image format.
+    - Map Port `$FBxx` for FDC status and data.
+- **Acceptance**:
+    - `|DISC` and `CAT` commands successfully list and load files from a virtual disk image.
+
+**US-508 — Amstrad Digital Joystick**
+Implement the CPC's built-in joystick interface. Unlike the Kempston, the Amstrad joystick is part of the keyboard matrix.
+- **Tasks**:
+    - Map joystick directions and fire buttons to Keyboard Row 9 of the 8255 PPI matrix.
+    - Support for two joysticks via Row 6 and Row 9 mapping.
+- **Acceptance**:
+    - Joystick input is correctly detected by both the BASIC `JOY()` function and arcade software.
 
 ---
 

@@ -1,6 +1,6 @@
 using Machines.Common;
 
-namespace Machines.ZxSpectrum;
+namespace Machines.Sinclair.Common;
 
 /// <summary>
 /// Emulates the ZX Spectrum's single-bit beeper with high-fidelity anti-aliased resampling.

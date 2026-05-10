@@ -21,7 +21,9 @@ public sealed partial class Cpu
         {
             case 0:
                 // Device places opcode on bus
+                _isInterruptFetch = true;
                 StepGenerated(_intDataBus);
+                _isInterruptFetch = false;
                 break;
             case 1:
                 Push(PC);

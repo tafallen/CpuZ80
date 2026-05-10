@@ -183,8 +183,11 @@ public sealed partial class Cpu
         _bus.Write(addr, val);
     }
 
+    private bool _isInterruptFetch;
+
     private byte Fetch()
     {
+        if (_isInterruptFetch) return _intDataBus;
         R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); // Bit 7 is preserved, bits 0-6 increment
         return Read(PC++);
     }

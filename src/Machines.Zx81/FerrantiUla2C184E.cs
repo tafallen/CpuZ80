@@ -6,20 +6,27 @@ namespace Machines.Zx81;
 
 /// <summary>
 /// Represents the Ferranti 2C184E Uncommitted Logic Array (ULA) chip used in the ZX81.
-/// Handles SLOW/FAST mode (NMI generator) and I/O port decoding.
+/// Handles SLOW/FAST mode (NMI generator), I/O port decoding, and beeper audio.
 /// </summary>
 public sealed class FerrantiUla2C184E : IPortBus, ICpuHost
 {
     private readonly SinclairKeyboardAdapter? _keyboard;
     private readonly ITapeDevice?            _tape;
+    private readonly BeeperDevice            _beeper;
+    private readonly IAudioSink?             _audioSink;
+    private Cpu? _cpu;
 
     public bool NmiEnabled { get; private set; }
 
-    public FerrantiUla2C184E(SinclairKeyboardAdapter? keyboard = null, ITapeDevice? tape = null)
+    public FerrantiUla2C184E(SinclairKeyboardAdapter? keyboard = null, ITapeDevice? tape = null, IAudioSink? audio = null)
     {
         _keyboard = keyboard;
         _tape     = tape;
+        _beeper   = new BeeperDevice();
+        _audioSink = audio;
     }
+
+    public void ConnectCpu(Cpu cpu) => _cpu = cpu;
 
     public void OnPortAccess(ushort address, Cpu cpu)
     {
@@ -29,6 +36,24 @@ public sealed class FerrantiUla2C184E : IPortBus, ICpuHost
     }
 
     public void OnMemoryAccess(ushort address, Cpu cpu) { }
+
+    public void OnFrameStart(ulong tstate)
+    {
+        _beeper.CommitTransitions();
+    }
+
+    public void RenderFrame(IVideoSink sink, ulong endTState)
+    {
+        if (_audioSink is not null)
+        {
+            _beeper.Render(_audioSink, endTState);
+        }
+    }
+
+    public void Reset()
+    {
+        _beeper.Reset(0);
+    }
 
     public byte In(ushort port)
     {
@@ -46,6 +71,10 @@ public sealed class FerrantiUla2C184E : IPortBus, ICpuHost
 
     public void Out(ushort port, byte value)
     {
-        _tape?.WriteBit((value & 0x08) != 0);
+        bool mic = (value & 0x08) != 0;
+        _tape?.WriteBit(mic);
+        
+        if (_cpu is not null)
+            _beeper.SetLevel(_cpu.TotalCycles, mic ? 10 : 0);
     }
 }

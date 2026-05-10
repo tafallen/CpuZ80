@@ -21,7 +21,7 @@ public sealed class Zx81Machine
     private readonly SinclairVideo   _video;
     private readonly FerrantiUla2C184E _ula;
 
-    public Zx81Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)
+    public Zx81Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
         if (romImage.Length != RomSize)
             throw new ArgumentException($"ROM must be {RomSize} bytes, got {romImage.Length}.", nameof(romImage));
@@ -30,19 +30,20 @@ public sealed class Zx81Machine
         var rom = new Rom(romImage);
 
         var bus = new AddressDecoder();
-        bus.Map(0x0000, 0x1FFF, rom);
-        bus.Map(0x2000, 0x3FFF, rom); 
         
-        bus.Map(0x4000, 0x43FF, Ram);
-        for (ushort addr = 0x4400; addr < 0x8000; addr += 0x0400)
-        {
-            bus.Map(addr, (ushort)(addr + 0x03FF), Ram);
-        }
+        // ROM: 8K at 0x0000-0x1FFF, mirrored at 0x2000-0x3FFF
+        // Decoding: A14=0, A15=0. Internal size: 8K (mask 0x1FFF)
+        bus.MapMirror(0x0000, 0xC000, 0x1FFF, rom);
+
+        // RAM: 1K at 0x4000, mirrored throughout 0x4000-0x7FFF
+        // Decoding: A14=1, A15=0. Internal size: 1K (mask 0x03FF)
+        bus.MapMirror(0x4000, 0xC000, 0x03FF, Ram);
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ula = new FerrantiUla2C184E(kbAdapter, tape);
+        _ula = new FerrantiUla2C184E(kbAdapter, tape, audio);
 
         Cpu = new Cpu(bus, _ula, _ula);
+        _ula.ConnectCpu(Cpu);
         _video = new SinclairVideo(rom, Ram, 0x1E00);
     }
 
@@ -52,6 +53,7 @@ public sealed class Zx81Machine
         Cpu.I = 0x1E; 
         _nextNmiCycles = CyclesPerScanline;
         _nextFrameTarget = 0;
+        _ula.Reset();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -81,6 +83,7 @@ public sealed class Zx81Machine
     public void RunFrame()
     {
         _nextFrameTarget += CyclesPerFrame;
+        _ula.OnFrameStart(Cpu.TotalCycles);
 
         if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
             _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
@@ -91,7 +94,11 @@ public sealed class Zx81Machine
         }
     }
 
-    public void RenderFrame(IVideoSink sink) => _video.Render(sink);
+    public void RenderFrame(IVideoSink sink)
+    {
+        _video.Render(sink);
+        _ula.RenderFrame(sink, Cpu.TotalCycles);
+    }
 
     public void LoadSnapshot(Stream data)
     {

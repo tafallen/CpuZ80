@@ -39,7 +39,7 @@ if (rom.Length != 0x4000)
 // ── build machine ─────────────────────────────────────────────────────────────
 using var host = new RaylibHost("Sinclair ZX Spectrum 48K", scale);
 
-var machine = new ZxSpectrumMachine(rom, keyboard: host);
+var machine = new ZxSpectrumMachine(rom, keyboard: host, audio: host);
 machine.Reset();
 
 // ── load snapshot ─────────────────────────────────────────────────────────────

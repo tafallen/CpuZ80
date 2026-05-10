@@ -19,7 +19,7 @@ public sealed class Zx80Machine
     private readonly SinclairVideo   _video;
     private readonly FerrantiUla2C158E _ula;
 
-    public Zx80Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, ITapeDevice? tape = null)
+    public Zx80Machine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
         if (romImage.Length != RomSize)
             throw new ArgumentException($"ROM must be {RomSize} bytes, got {romImage.Length}.", nameof(romImage));
@@ -32,9 +32,10 @@ public sealed class Zx80Machine
         bus.Map(0x4000, 0x43FF, Ram);
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
-        _ula = new FerrantiUla2C158E(kbAdapter, tape);
+        _ula = new FerrantiUla2C158E(kbAdapter, tape, audio);
 
         Cpu = new Cpu(bus, _ula, _ula);
+        _ula.ConnectCpu(Cpu);
         _video = new SinclairVideo(rom, Ram, 0x0E00);
     }
 
@@ -43,6 +44,7 @@ public sealed class Zx80Machine
         Cpu.Reset();
         Cpu.I = 0x0E;
         _nextFrameTarget = 0;
+        _ula.Reset();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -62,6 +64,7 @@ public sealed class Zx80Machine
     public void RunFrame()
     {
         _nextFrameTarget += CyclesPerFrame;
+        _ula.OnFrameStart(Cpu.TotalCycles);
         
         if (Cpu.TotalCycles > _nextFrameTarget + CyclesPerFrame)
             _nextFrameTarget = Cpu.TotalCycles + CyclesPerFrame;
@@ -70,5 +73,9 @@ public sealed class Zx80Machine
             Cpu.Step();
     }
 
-    public void RenderFrame(IVideoSink sink) => _video.Render(sink);
+    public void RenderFrame(IVideoSink sink)
+    {
+        _video.Render(sink);
+        _ula.RenderFrame(sink, Cpu.TotalCycles);
+    }
 }

@@ -6,9 +6,10 @@ namespace Adapters.Raylib;
 
 /// <summary>
 /// Cross-platform host window using Raylib.
-/// Implements IVideoSink (renders pixel frames) and IPhysicalKeyboard (queries key state).
+/// Implements IVideoSink (renders pixel frames), IPhysicalKeyboard (queries key state),
+/// and IAudioSink (outputs sound samples).
 /// </summary>
-public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
+public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IAudioSink, IDisposable
 {
     private readonly int _scale;
     private int          _width;
@@ -16,6 +17,11 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
     private Texture2D    _texture;
     private uint[]       _rgbaBuffer;
     private bool         _disposed;
+
+    // Audio members
+    private AudioStream _audioStream;
+    private readonly Queue<short> _audioBuffer = new(8192);
+    private const int TargetSampleRate = 44100;
 
     public RaylibHost(string title = "ZX Spectrum", int scale = 3, int width = 320, int height = 240)
     {
@@ -27,6 +33,12 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
         Raylib_cs.Raylib.InitWindow(width * scale, height * scale, title);
         Raylib_cs.Raylib.SetTargetFPS(50);
 
+        // Initialize Audio
+        Raylib_cs.Raylib.InitAudioDevice();
+        Raylib_cs.Raylib.SetAudioStreamBufferSizeDefault(2048);
+        _audioStream = Raylib_cs.Raylib.LoadAudioStream(TargetSampleRate, 16, 1);
+        Raylib_cs.Raylib.PlayAudioStream(_audioStream);
+
         var img = Raylib_cs.Raylib.GenImageColor(width, height, Color.Black);
         _texture = Raylib_cs.Raylib.LoadTextureFromImage(img);
         Raylib_cs.Raylib.UnloadImage(img);
@@ -36,7 +48,43 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
 
     public bool IsRunning => !Raylib_cs.Raylib.WindowShouldClose();
 
-    public void PollEvents() => Raylib_cs.Raylib.PollInputEvents();
+    public void PollEvents()
+    {
+        Raylib_cs.Raylib.PollInputEvents();
+        UpdateAudio();
+    }
+
+    private unsafe void UpdateAudio()
+    {
+        if (!Raylib_cs.Raylib.IsAudioStreamPlaying(_audioStream)) return;
+
+        // Feed Raylib any processed audio buffers
+        while (Raylib_cs.Raylib.IsAudioStreamProcessed(_audioStream))
+        {
+            int count = Math.Min(_audioBuffer.Count, 1024);
+            if (count == 0) break;
+
+            short[] samples = new short[count];
+            for (int i = 0; i < count; i++) samples[i] = _audioBuffer.Dequeue();
+
+            fixed (short* ptr = samples)
+            {
+                Raylib_cs.Raylib.UpdateAudioStream(_audioStream, ptr, count);
+            }
+        }
+    }
+
+    public void SubmitSamples(ReadOnlySpan<short> samples, int sampleRate)
+    {
+        // For simplicity, we assume machines provide 44.1kHz.
+        // We cap the buffer to prevent runaway latency if the host is slow.
+        if (_audioBuffer.Count > 16384) return;
+
+        foreach (var s in samples)
+        {
+            _audioBuffer.Enqueue(s);
+        }
+    }
 
     public unsafe void SubmitFrame(ReadOnlySpan<uint> pixels, int width, int height)
     {
@@ -80,6 +128,8 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
     {
         if (_disposed) return;
         _disposed = true;
+        Raylib_cs.Raylib.UnloadAudioStream(_audioStream);
+        Raylib_cs.Raylib.CloseAudioDevice();
         Raylib_cs.Raylib.UnloadTexture(_texture);
         Raylib_cs.Raylib.CloseWindow();
     }

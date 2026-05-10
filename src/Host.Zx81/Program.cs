@@ -39,7 +39,7 @@ if (rom.Length != 0x2000)
 // ── build machine ─────────────────────────────────────────────────────────────
 using var host = new RaylibHost("Sinclair ZX81", scale);
 
-var machine = new Zx81Machine(rom, keyboard: host);
+var machine = new Zx81Machine(rom, keyboard: host, audio: host);
 machine.Reset();
 
 // ── load snapshot ─────────────────────────────────────────────────────────────
