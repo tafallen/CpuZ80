@@ -39,6 +39,10 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-031 | Pilot Pulse Heuristics | Low | OPEN | Low |
 | TD-032 | Tape Interface Pollution | Low | OPEN | Low |
 | TD-033 | PWM Logic Fragmentation | Medium | OPEN | Medium |
+| TD-034 | Semantic Decoding Constants | Low | OPEN | Low |
+| TD-035 | Mapping Struct Cache Locality | Low | OPEN | Medium |
+| TD-036 | High-Fidelity Floating Bus | Medium | OPEN | Medium |
+| TD-037 | CodeGen Monolithic Design | Low | OPEN | Medium |
 
 ---
 
@@ -128,3 +132,23 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 - **Issue:** `SinclairTapeAdapter` (pulse-count) and `ZxSpectrumTapeAdapter` (PWM) live in different projects and namespaces.
 - **Future Impact:** Implementation of **.CDT** (Amstrad) will lead to a third redundant implementation.
 - **Remediation:** Consolidate PWM bitstreaming logic into a reusable generic Sinclair-family component.
+
+### TD-034: Semantic Decoding Constants (OPEN)
+- **Issue:** Machine compositors use literal masks (e.g. `0xC000`) for hardware decoding.
+- **Risk:** Poor readability; masks don't explain which address lines are being decoded.
+- **Remediation:** Replace magic numbers with semantic constants (e.g. `const ushort A14_A15_Mask = 0xC000`).
+
+### TD-035: Mapping Struct Cache Locality (OPEN)
+- **Issue:** The `AddressDecoder.Mapping` struct size has increased to support mirroring/masks.
+- **Impact:** Increased memory footprint (~1MB) may cause more L2 cache misses during performance-critical bus operations.
+- **Remediation:** Profile and potentially optimize the struct layout or use a separate bitmask array.
+
+### TD-036: High-Fidelity Floating Bus (OPEN)
+- **Issue:** The current Floating Bus implementation is a stub returning a static value.
+- **Risk:** Inaccurate for games that rely on the ULA's attribute-fetch timing.
+- **Remediation:** Implement real-time attribute sampling based on the ULA's scanline position.
+
+### TD-037: CodeGen Monolithic Design (OPEN)
+- **Issue:** `CpuZ80.CodeGen/Program.cs` uses a large monolithic method for instruction generation.
+- **Risk:** Hard to maintain and extend for complex new instructions (e.g. multi-byte Mode 0 interrupts).
+- **Remediation:** Refactor the generator into smaller, specialized transformation classes.
