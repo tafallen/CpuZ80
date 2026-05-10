@@ -60,6 +60,23 @@ public sealed class AddressDecoder : IBus
     /// </summary>
     public void MapMirror(ushort baseAddress, ushort decodeMask, ushort addressMask, IBus device)
     {
+        // TD-027: Validate that addressMask + 1 is a power of two and fits the device.
+        int capacity = (addressMask + 1);
+        if ((capacity & addressMask) != 0)
+        {
+            throw new ArgumentException($"Invalid address mask 0x{addressMask:X4}. Mask + 1 must be a power of two.");
+        }
+
+        // Check against known device sizes if available
+        if (device is Ram ram && capacity > ram.Size)
+        {
+            throw new ArgumentException($"Address mask 0x{addressMask:X4} exceeds RAM capacity (0x{ram.Size:X4}).");
+        }
+        if (device is Rom rom && capacity > rom.Size)
+        {
+            throw new ArgumentException($"Address mask 0x{addressMask:X4} exceeds ROM capacity (0x{rom.Size:X4}).");
+        }
+
         for (int i = 0; i < 65536; i++)
         {
             if ((i & decodeMask) == baseAddress)

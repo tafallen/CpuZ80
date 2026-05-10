@@ -6,6 +6,7 @@ public sealed class Ram : IBus
 
     public Ram(int size) => _data = new byte[size];
 
+    public int Size => _data.Length;
     public byte[] RawBytes => _data;
 
     public byte Read(ushort address) => _data[address];
