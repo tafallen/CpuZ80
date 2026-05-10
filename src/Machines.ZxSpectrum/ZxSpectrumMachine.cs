@@ -23,8 +23,11 @@ public sealed class ZxSpectrumMachine
     private readonly IAudioSink?       _audioSink;
     
     private int _frameCounter;
-    private ulong _lastFrameStartCycles;
+    private ulong _frameStartCycles;
     private ulong _renderFrameStartCycles;
+
+    // Transition buffering to prevent race conditions during rendering
+    private readonly List<(ulong TState, byte Color)> _renderBorderTransitions = new(256);
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -55,7 +58,7 @@ public sealed class ZxSpectrumMachine
         Cpu.Reset();
         Cpu.I = 0x3F; 
         _frameCounter = 0;
-        _lastFrameStartCycles = 0;
+        _frameStartCycles = 0;
         _renderFrameStartCycles = 0;
         _beeper.Reset(0);
         _ports.Reset();
@@ -74,14 +77,15 @@ public sealed class ZxSpectrumMachine
 
     public void RunFrame()
     {
-        _lastFrameStartCycles = Cpu.TotalCycles;
+        _frameStartCycles = Cpu.TotalCycles;
+        _host.FrameStartCycles = _frameStartCycles;
 
         // Start of frame: Commit and clear transitions
         _ports.CommitTransitions();
         _beeper.CommitTransitions();
         
         // Snapshot the cycle anchor for rendering
-        _renderFrameStartCycles = _lastFrameStartCycles;
+        _renderFrameStartCycles = _frameStartCycles;
 
         // Assert 50Hz INT
         Cpu.IntPin = true;
@@ -95,10 +99,8 @@ public sealed class ZxSpectrumMachine
 
             Step();
             
-            // In a real Spectrum, the Floating Bus value changes constantly.
-            // For now, we update it once per instruction to a stub value.
-            // Real scanline-based floating bus will be in US-405.
-            _ports.FloatingBusValue = 0xFF; 
+            // Sync floating bus value
+            _ports.FloatingBusValue = _host.CurrentFloatingBusValue;
         }
         _frameCounter++;
     }

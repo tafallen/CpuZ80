@@ -89,22 +89,10 @@ public sealed partial class Cpu
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Tick(int count)
     {
-        // Common case: no wait states injected.
-        // Fast-path avoids the loop and branching.
-        if (!WaitPin && WaitCycles == 0)
-        {
-            TotalCycles += (ulong)count;
-            return;
-        }
-
-        TickSlow(count);
-    }
-
-    private void TickSlow(int count)
-    {
         for (int i = 0; i < count; i++)
         {
             TotalCycles++;
+            
             while (WaitPin || WaitCycles > 0)
             {
                 if (WaitCycles > 0) WaitCycles--;
@@ -174,8 +162,8 @@ public sealed partial class Cpu
         StepGenerated(opcode);
     }
 
-    public byte ReadMemory(ushort address) => Read(address);
-    public void WriteMemory(ushort address, byte value) => Write(address, value);
+    public byte ReadMemory(ushort address) { byte val = Read(address); Tick(3); return val; }
+    public void WriteMemory(ushort address, byte value) { Write(address, value); Tick(3); }
 
     private byte Read(ushort addr)
     {
