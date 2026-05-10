@@ -275,7 +275,7 @@ class Program
                 cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // DD(4), CB(4), d(3), op(3), R(3), W(3), W(3) = 23 total
             } else if (opcode < 0x80) { // BIT
                 mnem = $"BIT {bit}, (IX+d)";
-                act = "{ byte val = Read(WZ); DoBit(" + bit + ", val); SetUndocumentedFlagsFromWZ(); }";
+                act = "{ byte val = Read(WZ); DoBitIndexed(" + bit + ", val); }";
                 cycles = new[] { 4, 4, 3, 3, 3, 3 }; // 4+4+3+3+3+3 = 20 total
             } else if (opcode < 0xC0) { // RES
                 mnem = $"RES {bit}, (IX+d)";
@@ -513,6 +513,7 @@ class Program
                     act = act.Replace("HL++", "WZ++"); 
                     act = act.Replace("HL--", "WZ--");
                     act = act.Replace("SetReg(6,", "SetRegWZ(");
+                    act = act.Replace("DoBit(", "DoBitIndexed(");
 
                     newActions.Add(act);
                     if (i > 0) newCycles.Add(cycles[i]);

@@ -59,4 +59,11 @@ public sealed partial class Cpu
         // Zilog Z80: bits 3 and 5 are copies of bits 3 and 5 of the tested register (operand)
         SetUndocumentedFlags(val);
     }
+
+    private void DoBitIndexed(int bit, byte val)
+    {
+        DoBit(bit, val);
+        // For indexed BIT, bits 3 and 5 come from bits 11 and 13 of the effective address (WZ)
+        SetUndocumentedFlagsFromWZ();
+    }
 }
