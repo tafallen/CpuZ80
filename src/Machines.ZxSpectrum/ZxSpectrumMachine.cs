@@ -17,6 +17,7 @@ public sealed class ZxSpectrumMachine
     public Ram Ram { get; }
 
     private readonly FerrantiUla5C6C _ula;
+    private readonly ZxSpectrumPortBus _ports;
     private ulong _frameStartCycles;
     private ulong _renderFrameStartCycles;
     private ulong _nextFrameTarget;
@@ -35,8 +36,10 @@ public sealed class ZxSpectrumMachine
 
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
         _ula = new FerrantiUla5C6C(Ram, kbAdapter, audio, tape);
+        var joystick = new KempstonJoystick(keyboard);
+        _ports = new ZxSpectrumPortBus(_ula, joystick);
 
-        Cpu = new Cpu(bus, _ula, _ula);
+        Cpu = new Cpu(bus, _ports, _ula);
         _ula.ConnectCpu(Cpu);
     }
 
@@ -52,11 +55,11 @@ public sealed class ZxSpectrumMachine
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
     public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
-    public byte ReadPort(ushort address) => _ula.In(address);
+    public byte ReadPort(ushort address) => _ports.In(address);
     public void WritePort(ushort address, byte value)
     {
         _ula.OnPortAccess(address, Cpu);
-        _ula.Out(address, value);
+        _ports.Out(address, value);
     }
 
     public void Step()
