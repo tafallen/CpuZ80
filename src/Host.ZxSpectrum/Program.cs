@@ -6,6 +6,7 @@ using Machines.Sinclair.Common;
 // ── argument parsing ──────────────────────────────────────────────────────────
 string? romPath      = null;
 string? snapshotPath = null;
+string? tapePath     = null;
 int     scale        = 3;
 
 for (int i = 0; i < args.Length; i++)
@@ -14,6 +15,7 @@ for (int i = 0; i < args.Length; i++)
     {
         case "--rom":      romPath      = args[++i]; break;
         case "--snapshot": snapshotPath = args[++i]; break;
+        case "--tape":     tapePath     = args[++i]; break;
         case "--scale":    scale        = int.Parse(args[++i]); break;
         default:
             Console.Error.WriteLine($"Unknown argument: {args[i]}");
@@ -39,7 +41,16 @@ if (rom.Length != 0x4000)
 // ── build machine ─────────────────────────────────────────────────────────────
 using var host = new RaylibHost("Sinclair ZX Spectrum 48K", scale);
 
-var machine = new ZxSpectrumMachine(rom, keyboard: host, audio: host);
+ZxSpectrumTapeAdapter? tape = null;
+if (tapePath is not null)
+{
+    tape = new ZxSpectrumTapeAdapter();
+    using var fs = File.OpenRead(tapePath);
+    tape.Load(fs);
+    Console.WriteLine($"Tape: {Path.GetFileName(tapePath)}");
+}
+
+var machine = new ZxSpectrumMachine(rom, keyboard: host, audio: host, tape: tape);
 machine.Reset();
 
 // ── load snapshot ─────────────────────────────────────────────────────────────
@@ -69,6 +80,7 @@ static void PrintUsage()
 
         Options:
           --snapshot <path>   ZX Spectrum snapshot image (.sna)
+          --tape     <path>   ZX Spectrum tape image (.tap)
           --scale    <n>      Window scale factor (default: 3)
         """);
 }

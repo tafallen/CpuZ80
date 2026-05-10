@@ -94,7 +94,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
             byte result = _keyboard?.Read(port) ?? 0xFF;
             if (_tape is not null)
             {
-                if (!_tape.ReadBit()) result &= unchecked((byte)~EAR_Bit); 
+                if (!_tape.ReadBit(_cpu?.TotalCycles ?? 0)) result &= unchecked((byte)~EAR_Bit); 
                 else result |= EAR_Bit;
             }
             return result;

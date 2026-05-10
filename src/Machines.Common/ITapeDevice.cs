@@ -7,7 +7,7 @@ namespace Machines.Common;
 /// </summary>
 public interface ITapeDevice
 {
-    bool ReadBit();
+    bool ReadBit(ulong currentTState);
     void WriteBit(bool bit);
 
     /// <summary>Load tape data from a stream (e.g. a .tap or .p file).</summary>

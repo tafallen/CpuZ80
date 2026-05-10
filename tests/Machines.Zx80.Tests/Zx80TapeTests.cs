@@ -23,7 +23,7 @@ public class Zx80TapeTests
     [Fact]
     public void Tape_ReadBit_LowOnPulse()
     {
-        // When ITapeDevice.ReadBit() returns false (pulse present), bit 6 of IN is low.
+        // When ITapeDevice.ReadBit(0) returns false (pulse present), bit 6 of IN is low.
         var tape = new StubTape(readBit: false);
         var machine = new Zx80Machine(NopRom(), tape: tape);
         byte result = machine.ReadPort(0xFEFE);
@@ -33,7 +33,7 @@ public class Zx80TapeTests
     [Fact]
     public void Tape_ReadBit_HighOnSilence()
     {
-        // When ITapeDevice.ReadBit() returns true (silence), bit 6 of IN is high.
+        // When ITapeDevice.ReadBit(0) returns true (silence), bit 6 of IN is high.
         var tape = new StubTape(readBit: true);
         var machine = new Zx80Machine(NopRom(), tape: tape);
         byte result = machine.ReadPort(0xFEFE);
@@ -65,14 +65,14 @@ public class Zx80TapeTests
     public void TapeAdapter_ZeroBit_Generates4PulseHighLowPairs()
     {
         // A byte of 0x00: all 8 bits are 0. Each 0-bit = 4 × (HIGH, LOW).
-        // The first bit (MSB) is 0, so ReadBit() should produce 4 HIGH+LOW pairs.
+        // The first bit (MSB) is 0, so ReadBit(0) should produce 4 HIGH+LOW pairs.
         var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x00]));
 
-        // 0 bit → 4 pulses = 8 ReadBit() calls: true,false,true,false,true,false,true,false
+        // 0 bit → 4 pulses = 8 ReadBit(0) calls: true,false,true,false,true,false,true,false
         var states = new List<bool>();
         for (int i = 0; i < 8; i++)
-            states.Add(adapter.ReadBit());
+            states.Add(adapter.ReadBit(0));
 
         Assert.Equal([true, false, true, false, true, false, true, false], states);
     }
@@ -80,13 +80,13 @@ public class Zx80TapeTests
     [Fact]
     public void TapeAdapter_OneBit_Generates9PulseHighLowPairs()
     {
-        // A byte of 0x80 (MSB=1): first bit is 1 → 9 × (HIGH, LOW) = 18 ReadBit() calls.
+        // A byte of 0x80 (MSB=1): first bit is 1 → 9 × (HIGH, LOW) = 18 ReadBit(0) calls.
         var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x80]));
 
         var states = new List<bool>();
         for (int i = 0; i < 18; i++)
-            states.Add(adapter.ReadBit());
+            states.Add(adapter.ReadBit(0));
 
         // 9 pulses = 9 true, 9 false, interleaved
         for (int p = 0; p < 9; p++)
@@ -99,10 +99,10 @@ public class Zx80TapeTests
     [Fact]
     public void TapeAdapter_AfterAllPulses_ReturnsSilence()
     {
-        // Once all data is exhausted, ReadBit() returns true (silence = no signal).
+        // Once all data is exhausted, ReadBit(0) returns true (silence = no signal).
         var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([])); // empty tape
-        Assert.True(adapter.ReadBit());
+        Assert.True(adapter.ReadBit(0));
     }
 
     // ── Round-trip: verify total signal length for a known byte (test 6 adapted) ─
@@ -144,7 +144,7 @@ public class Zx80TapeTests
         Assert.Equal(144, CountSignalStates(adapter));
     }
 
-    // Count ReadBit() signal states until silence (two consecutive trues).
+    // Count ReadBit(0) signal states until silence (two consecutive trues).
     // Pulse pairs are always HIGH(true)/LOW(false). When a HIGH is followed by another
     // HIGH, the data is exhausted. We peek on each HIGH to avoid counting silence.
     private static int CountSignalStates(SinclairTapeAdapter adapter)
@@ -152,9 +152,9 @@ public class Zx80TapeTests
         int count = 0;
         while (true)
         {
-            bool state = adapter.ReadBit();
+            bool state = adapter.ReadBit(0);
             if (!state) { count++; continue; }       // LOW: always part of signal
-            bool next = adapter.ReadBit();
+            bool next = adapter.ReadBit(0);
             if (!next) { count += 2; continue; }     // HIGH+LOW: real pulse pair
             break;                                    // HIGH+HIGH: silence — stop
         }
@@ -171,7 +171,7 @@ public class Zx80TapeTests
 
         public StubTape(bool readBit) => _readBit = readBit;
 
-        public bool ReadBit()           => _readBit;
+        public bool ReadBit(ulong currentTState) => _readBit;
         public void WriteBit(bool bit)  => LastWrittenBit = bit;
         public void Load(Stream data)   { }
     }

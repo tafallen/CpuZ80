@@ -61,7 +61,7 @@ public sealed class FerrantiUla2C184E : IPortBus, ICpuHost
 
         if (_tape is not null)
         {
-            bool pulse = !_tape.ReadBit();
+            bool pulse = !_tape.ReadBit(_cpu?.TotalCycles ?? 0);
             if (pulse) result &= 0xBF;
             else result |= 0x40;
         }

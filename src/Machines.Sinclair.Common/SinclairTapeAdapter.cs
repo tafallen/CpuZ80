@@ -22,7 +22,7 @@ public sealed class SinclairTapeAdapter : ITapeDevice
             EnqueueByte((byte)b);
     }
 
-    public bool ReadBit() => _signal.Count > 0 ? _signal.Dequeue() : true; // true = silence
+    public bool ReadBit(ulong currentTState) => _signal.Count > 0 ? _signal.Dequeue() : true; // true = silence
 
     public void WriteBit(bool bit) { /* MIC output not yet implemented for physical file write */ }
 
