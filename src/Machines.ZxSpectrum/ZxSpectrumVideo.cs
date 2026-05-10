@@ -1,5 +1,6 @@
 using CpuZ80.Core;
 using Machines.Common;
+using System.Runtime.CompilerServices;
 
 namespace Machines.ZxSpectrum;
 
@@ -30,7 +31,7 @@ public sealed class ZxSpectrumVideo
 
     private static readonly uint[] PaletteBright =
     [
-        0xFF000000, // 0: Black
+        0xFF000000, // 0: Black (Bright black is still black)
         0xFF0000FF, // 1: Blue
         0xFFFF0000, // 2: Red
         0xFFFF00FF, // 3: Magenta
@@ -41,6 +42,7 @@ public sealed class ZxSpectrumVideo
     ];
 
     private readonly Ram _ram;
+    private readonly uint[] _pixelBuffer = new uint[TotalWidth * TotalHeight];
 
     public ZxSpectrumVideo(Ram ram)
     {
@@ -53,32 +55,25 @@ public sealed class ZxSpectrumVideo
     /// <param name="flashInverted">True if flashing characters should be in inverted state.</param>
     public void Render(IVideoSink sink, byte borderColor, bool flashInverted)
     {
-        var pixels = new uint[TotalWidth * TotalHeight];
         var ram    = _ram.RawBytes;
         uint borderARGB = PaletteNormal[borderColor & 0x07];
 
         // 1. Fill the entire 320x240 buffer with the border color
-        Array.Fill(pixels, borderARGB);
+        // This is efficient with the pre-allocated buffer.
+        Array.Fill(_pixelBuffer, borderARGB);
 
         // 2. Render the 256x192 active area
-        // The Spectrum bitmap is stored in three "thirds" of 64 lines each.
-        // Memory Layout: 010 TT SSS RRR CCCCC
-        // TT  = Third (0-2)
-        // SSS = Scanline within character row (0-7)
-        // RRR = Character row within third (0-7)
-        // CCCCC = Column (0-31)
         for (int third = 0; third < 3; third++)
         {
             for (int charRow = 0; charRow < 8; charRow++)
             {
-                // Optimization: Attributes are constant for all 8 scanlines of a character row.
-                // Pre-calculate the paper/ink colors for this row once.
-                int attrBase = 0x1800 + ((third << 8) | (charRow << 5));
+                // Base offset for attributes in this character row
+                int attrBase = GetAttributeAddress(third, charRow);
                 
                 for (int scanline = 0; scanline < 8; scanline++)
                 {
                     int y = (third * 64) + (charRow * 8) + scanline;
-                    int bitmapBase = (third << 11) | (scanline << 8) | (charRow << 5);
+                    int bitmapBase = GetBitmapAddress(third, charRow, scanline);
                     
                     // Offset pixels to center the 256x192 area in 320x240
                     int pixelRowOffset = (y + BorderHeight) * TotalWidth + BorderWidth;
@@ -106,13 +101,33 @@ public sealed class ZxSpectrumVideo
                         for (int bit = 0; bit < 8; bit++)
                         {
                             bool set = (bitmap & (0x80 >> bit)) != 0;
-                            pixels[pixelRowOffset + (col * 8 + bit)] = set ? inkColor : paperColor;
+                            _pixelBuffer[pixelRowOffset + (col * 8 + bit)] = set ? inkColor : paperColor;
                         }
                     }
                 }
             }
         }
 
-        sink.SubmitFrame(pixels, TotalWidth, TotalHeight);
+        sink.SubmitFrame(_pixelBuffer, TotalWidth, TotalHeight);
+    }
+
+    /// <summary>
+    /// Calculates the bitmap memory offset relative to 0x4000.
+    /// Memory Layout: 0 TT SSS RRR CCCCC
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetBitmapAddress(int third, int charRow, int scanline)
+    {
+        return (third << 11) | (scanline << 8) | (charRow << 5);
+    }
+
+    /// <summary>
+    /// Calculates the attribute memory offset relative to 0x4000.
+    /// Memory Layout: 0110 TT RRR CCCCC (Base 0x1800)
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetAttributeAddress(int third, int charRow)
+    {
+        return 0x1800 + (third << 8) | (charRow << 5);
     }
 }

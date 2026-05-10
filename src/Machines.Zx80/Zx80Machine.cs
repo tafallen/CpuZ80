@@ -41,17 +41,17 @@ public sealed class Zx80Machine
         _video = new SinclairVideo(rom, Ram, 0x0E00);
     }
 
-    /// <summary>Read a hardware port — delegates to the port bus. Useful for testing.</summary>
-    public byte ReadPort(ushort port) => _ports.In(port);
-
-    /// <summary>Write a hardware port — delegates to the port bus. Useful for testing.</summary>
-    public void WritePort(ushort port, byte value) => _ports.Out(port, value);
-
     public void Reset()
     {
         Cpu.Reset();
         Cpu.I = 0x0E;
     }
+
+    public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
+    public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
+
+    public byte ReadPort(ushort address) => _ports.In(address);
+    public void WritePort(ushort address, byte value) => _ports.Out(address, value);
 
     public void Step() => Cpu.Step();
 
