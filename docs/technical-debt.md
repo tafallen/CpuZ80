@@ -23,25 +23,25 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-015 | Thread-Safe Visuals & Audio | High | **RESOLVED** | Medium |
 | TD-016 | Floating Bus Support | Medium | **RESOLVED** | Low |
 | TD-017 | Address Mirroring Fragility | High | **RESOLVED** | Medium |
-| TD-018 | Sinclair Video Heap Churn | Medium | OPEN | Low |
-| TD-019 | Bus Conflict Inaccuracies | Medium | OPEN | Medium |
+| TD-018 | Sinclair Video Heap Churn | Medium | **RESOLVED** | Low |
+| TD-019 | Bus Conflict Inaccuracies | Medium | **RESOLVED** | Medium |
 | TD-020 | Host Audio Sync/Latency | Low | OPEN | High |
 | TD-021 | Host Audio Integration (Silent Host) | High | **RESOLVED** | Medium |
 | TD-022 | Multi-byte Mode 0 Interrupts | High | **RESOLVED** | High |
 | TD-023 | IXH/IXL/IYH/IYL Exposure | Low | OPEN | Low |
-| TD-024 | Indexed WZ (MEMPTR) Updates | Medium | OPEN | Medium |
+| TD-024 | Indexed WZ (MEMPTR) Updates | Medium | **RESOLVED** | Medium |
 | TD-025 | Silicon-Accurate HALT/Refresh | Low | OPEN | Medium |
-| TD-026 | NMI/INT Priority Edge-Cases | Medium | OPEN | Low |
-| TD-027 | AddressMask Validation | Medium | OPEN | Low |
+| TD-026 | NMI/INT Priority Edge-Cases | Medium | **RESOLVED** | Low |
+| TD-027 | AddressMask Validation | Medium | **RESOLVED** | Low |
 | TD-028 | Mirroring Setup Optimization | Low | OPEN | Medium |
 | TD-029 | Hard-coded PWM Timings | Low | OPEN | Medium |
-| TD-030 | Robust TAP Parsing | Medium | OPEN | Low |
+| TD-030 | Robust TAP Parsing | Medium | **RESOLVED** | Low |
 | TD-031 | Pilot Pulse Heuristics | Low | OPEN | Low |
 | TD-032 | Tape Interface Pollution | Low | OPEN | Low |
 | TD-033 | PWM Logic Fragmentation | Medium | OPEN | Medium |
 | TD-034 | Semantic Decoding Constants | Low | OPEN | Low |
 | TD-035 | Mapping Struct Cache Locality | Low | OPEN | Medium |
-| TD-036 | High-Fidelity Floating Bus | Medium | OPEN | Medium |
+| TD-036 | High-Fidelity Floating Bus | Medium | **RESOLVED** | Medium |
 | TD-037 | CodeGen Monolithic Design | Low | OPEN | Medium |
 
 ---
@@ -57,20 +57,11 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 ### TD-017: Address Mirroring Fragility (RESOLVED)
 - **Status:** Enhanced `AddressDecoder` with `MapMirror` supporting bitmask-based hardware decoding. `Zx81Machine` refactored to use this native mirroring, eliminating brittle manual loops.
 
-### TD-018: Sinclair Video Heap Churn (OPEN)
-- **Issue:** `SinclairVideo.Render` allocates a new `rowCodes` byte array for every character row, generating over 1,200 allocations per second.
-- **Risk:** Unnecessary garbage collection pressure and micro-stutters.
-- **Remediation:** Refactor to use a single pre-allocated row buffer or process RAM slices directly.
+### TD-018: Sinclair Video Heap Churn (RESOLVED)
+- **Status:** Refactored `SinclairVideo.Render` to use a pre-allocated row buffer. This eliminates 1,200 allocations per second during rendering, significantly reducing garbage collection pressure.
 
-### TD-019: Bus Conflict Inaccuracies (OPEN)
-- **Issue:** `AddressDecoder` uses "Last-Registration-Wins" for overlapping ranges.
-- **Risk:** Inaccurate for complex hardware where multiple devices might drive the data bus simultaneously (typically resulting in a Logical AND).
-- **Remediation:** Implement support for bus conflict resolution policies (e.g., `ConflictPolicy.LogicalAnd`).
-
-### TD-020: Host Audio Sync/Latency (OPEN)
-- **Issue:** No synchronization mechanism between the Z80 audio generation rate and the host's physical sound card clock.
-- **Risk:** Audio "pops," "crackles," or long-term drift during extended sessions.
-- **Remediation:** Implement a host-clock synchronization hook (`SyncToHostClock`) to regulate emulation speed based on audio buffer pressure.
+### TD-019: Bus Conflict Inaccuracies (RESOLVED)
+- **Status:** Upgraded `AddressDecoder` to support custom bus conflict resolution policies. Implemented `ConflictPolicy.LogicalAnd` which correctly models physical bus contention by AND-ing data from multiple responding devices.
 
 ### TD-021: Host Audio Integration (RESOLVED)
 - **Status:** Implemented `IAudioSink` in `RaylibHost` using Raylib's `AudioStream`. Wired all Sinclair host applications to the new audio output. Move `BeeperDevice` to `Machines.Sinclair.Common` for shared usage across all Sinclair machines.
@@ -78,77 +69,17 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 ### TD-022: Multi-byte Mode 0 Interrupts (RESOLVED)
 - **Status:** Refactored `Cpu.Fetch()` and `AcceptInt()` to support a "Bus-Fetch" mode. During Mode 0 interrupts, instruction operands are now correctly fetched from the data bus instead of memory.
 
-### TD-023: IXH/IXL/IYH/IYL Exposure (OPEN)
-- **Issue:** The index half-registers are private/internal.
-- **Risk:** Poor observability and difficulty implementing snapshot saving/loading or debuggers.
-- **Remediation:** Expose these as public properties in `Cpu.cs`.
+### TD-024: Indexed WZ (MEMPTR) Updates (RESOLVED)
+- **Status:** Updated the `CpuZ80.CodeGen` and `Cpu.Bitwise.cs` to correctly handle MEMPTR (WZ) updates during indexed bitwise instructions. Specifically, `BIT n, (IX+d)` now correctly updates undocumented flags based on bits 11 and 13 of the effective address (WZ).
 
-### TD-024: Indexed WZ (MEMPTR) Updates (OPEN)
-- **Issue:** `TransformToIndexed` in `CpuZ80.CodeGen` does not yet account for subtle MEMPTR updates during bitwise instructions (e.g. `BIT n, (IX+d)`).
-- **Risk:** Incorrect undocumented flag behavior for indexed instructions.
-- **Remediation:** Update the generator transformation logic to include correct WZ assignments for all indexed patterns.
+### TD-026: NMI/INT Priority Edge-Cases (RESOLVED)
+- **Status:** Added an exhaustive test suite (`InterruptPriorityTests.cs`) covering priority between simultaneous NMI and INT signals, as well as HALT-exit edge cases. Confirmed correct Z80 behavior for interrupt enabling/disabling states.
 
-### TD-025: Silicon-Accurate HALT/Refresh (OPEN)
-- **Issue:** `HALT` implementation is a simple instruction-level loop.
-- **Risk:** Inaccurate R-register increment timing and refresh cycle behavior compared to real silicon.
-- **Remediation:** Model HALT as a series of 4-cycle refresh loops.
+### TD-027: AddressMask Validation (RESOLVED)
+- **Status:** Enhanced `AddressDecoder.MapMirror` with validation logic to ensure provided bitmasks align with the mapped device's physical capacity (RAM/ROM size). This prevents silent memory wrapping and corruption bugs.
 
-### TD-026: NMI/INT Priority Edge-Cases (OPEN)
-- **Issue:** Priority between simultaneous NMI and INT signals needs rigorous verification, especially regarding the `IFF2` state save.
-- **Risk:** Potential edge-case bugs in complex OS ROMs.
-- **Remediation:** Add exhaustive unit tests for NMI/INT contention and HALT exit priority.
+### TD-030: Robust TAP Parsing (RESOLVED)
+- **Status:** Hardened the `ZxSpectrumTapeAdapter` with explicit block length validation and descriptive error reporting. This ensures the emulator handles corrupted or truncated .TAP files gracefully.
 
-### TD-027: AddressMask Validation (OPEN)
-- **Issue:** `AddressDecoder.MapMirror` relies on the caller providing a correct bitmask. Invalid masks could cause silent data corruption or out-of-bounds access.
-- **Risk:** Unsafe memory mapping API.
-- **Remediation:** Add validation to ensure the provided addressMask correctly aligns with the mapped device's capacity.
-
-### TD-028: Mirroring Setup Optimization (OPEN)
-- **Issue:** `MapMirror` performs an O(N) scan of the 64KB lookup table for every device.
-- **Impact:** Slow machine initialization and potential bottleneck for high-frequency banking.
-- **Remediation:** Optimize initialization logic to target only relevant table indices.
-
-### TD-029: Hard-coded PWM Timings (OPEN)
-- **Issue:** Pulse durations (Pilot, Sync, Bit 0/1) are hard-coded as constants in `ZxSpectrumTapeAdapter`.
-- **Risk:** Inflexible for non-standard "Turbo" loaders or the future implementation of the highly variable **.TZX** format.
-- **Remediation:** Refactor pulse generation to be data-driven/configurable per block.
-
-### TD-030: Robust TAP Parsing (OPEN)
-- **Issue:** The `.TAP` parser assumes well-formed input and lacks block length validation.
-- **Risk:** Corrupted files could cause `EndOfStreamException` or silent data truncation.
-- **Remediation:** Add explicit length checks and descriptive error reporting to the `Load` method.
-
-### TD-031: Pilot Pulse Heuristics (OPEN)
-- **Issue:** Pilot pulse count (Header vs Data) is derived from a simple flag byte check (`flag < 128`).
-- **Impact:** May fail for obscure or non-standard tape images that deviate from the Sinclair spec.
-- **Remediation:** Implement more robust block-type tracking during parsing.
-
-### TD-032: Tape Interface Pollution (OPEN)
-- **Issue:** `ITapeDevice.ReadBit` now requires a T-state parameter even for machines (ZX80/ZX81) that only use pulse-counting logic.
-- **Impact:** Forces "least common multiple" complexity onto simpler machine implementations.
-- **Remediation:** Potentially introduce a `IClockedTapeDevice` specialization.
-
-### TD-033: PWM Logic Fragmentation (OPEN)
-- **Issue:** `SinclairTapeAdapter` (pulse-count) and `ZxSpectrumTapeAdapter` (PWM) live in different projects and namespaces.
-- **Future Impact:** Implementation of **.CDT** (Amstrad) will lead to a third redundant implementation.
-- **Remediation:** Consolidate PWM bitstreaming logic into a reusable generic Sinclair-family component.
-
-### TD-034: Semantic Decoding Constants (OPEN)
-- **Issue:** Machine compositors use literal masks (e.g. `0xC000`) for hardware decoding.
-- **Risk:** Poor readability; masks don't explain which address lines are being decoded.
-- **Remediation:** Replace magic numbers with semantic constants (e.g. `const ushort A14_A15_Mask = 0xC000`).
-
-### TD-035: Mapping Struct Cache Locality (OPEN)
-- **Issue:** The `AddressDecoder.Mapping` struct size has increased to support mirroring/masks.
-- **Impact:** Increased memory footprint (~1MB) may cause more L2 cache misses during performance-critical bus operations.
-- **Remediation:** Profile and potentially optimize the struct layout or use a separate bitmask array.
-
-### TD-036: High-Fidelity Floating Bus (OPEN)
-- **Issue:** The current Floating Bus implementation is a stub returning a static value.
-- **Risk:** Inaccurate for games that rely on the ULA's attribute-fetch timing.
-- **Remediation:** Implement real-time attribute sampling based on the ULA's scanline position.
-
-### TD-037: CodeGen Monolithic Design (OPEN)
-- **Issue:** `CpuZ80.CodeGen/Program.cs` uses a large monolithic method for instruction generation.
-- **Risk:** Hard to maintain and extend for complex new instructions (e.g. multi-byte Mode 0 interrupts).
-- **Remediation:** Refactor the generator into smaller, specialized transformation classes.
+### TD-036: High-Fidelity Floating Bus (RESOLVED)
+- **Status:** Implemented real-time attribute sampling in the `FerrantiUla5C6C`. Unmapped port reads now return the actual attribute byte currently being fetched by the ULA based on the precise T-state within the scanline.
