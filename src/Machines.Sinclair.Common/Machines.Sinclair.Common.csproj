@@ -9,7 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="..\CpuZ80.Core\CpuZ80.Core.csproj" />
     <ProjectReference Include="..\Machines.Common\Machines.Common.csproj" />
-    <ProjectReference Include="..\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
   </ItemGroup>
 
 </Project>

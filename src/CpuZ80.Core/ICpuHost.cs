@@ -17,4 +17,12 @@ public interface ICpuHost
     /// Allows modeling of memory contention (e.g. Spectrum ULA).
     /// </summary>
     void OnMemoryAccess(ushort address, Cpu cpu);
+
+    /// <summary>No-op implementation of ICpuHost.</summary>
+    public sealed class NullHost : ICpuHost
+    {
+        public static readonly NullHost Instance = new();
+        public void OnPortAccess(ushort address, Cpu cpu) { }
+        public void OnMemoryAccess(ushort address, Cpu cpu) { }
+    }
 }

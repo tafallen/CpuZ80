@@ -1,18 +1,16 @@
 using Machines.Common;
 
-namespace Machines.Zx80;
+namespace Machines.Sinclair.Common;
 
 /// <summary>
-/// Maps IPhysicalKeyboard state to ZX80 half-row bytes.
+/// Maps IPhysicalKeyboard state to Sinclair 8×5 matrix bytes.
+/// Used by ZX80, ZX81, and partially by the ZX Spectrum.
 ///
-/// The ZX80 keyboard is an 8×5 matrix. Each half-row is selected by pulling
+/// The Sinclair keyboard is an 8×5 matrix. Each half-row is selected by pulling
 /// one address line (A8–A15) low. The result byte has bits 0–4 low for each
 /// pressed key; bits 5–7 are always 1.
-///
-/// When multiple rows are selected (multiple address bits low), the adapter
-/// ANDs the results so that keys from all active rows appear in the output.
 /// </summary>
-public sealed class Zx80KeyboardAdapter
+public sealed class SinclairKeyboardAdapter
 {
     private readonly IPhysicalKeyboard _keyboard;
 
@@ -38,7 +36,7 @@ public sealed class Zx80KeyboardAdapter
         [PhysicalKey.Space, PhysicalKey.Period, PhysicalKey.M, PhysicalKey.N, PhysicalKey.B],
     ];
 
-    public Zx80KeyboardAdapter(IPhysicalKeyboard keyboard) => _keyboard = keyboard;
+    public SinclairKeyboardAdapter(IPhysicalKeyboard keyboard) => _keyboard = keyboard;
 
     /// <summary>
     /// Read the keyboard result for the given port high byte.

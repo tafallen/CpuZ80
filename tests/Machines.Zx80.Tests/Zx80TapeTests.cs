@@ -1,5 +1,6 @@
 using Machines.Common;
 using Machines.Zx80;
+using Machines.Sinclair.Common;
 using Xunit;
 
 namespace Machines.Zx80.Tests;
@@ -58,14 +59,14 @@ public class Zx80TapeTests
         Assert.False(tape.LastWrittenBit);
     }
 
-    // ── Zx80TapeAdapter pulse encoding (tests 4–5) ───────────────────────────
+    // ── SinclairTapeAdapter pulse encoding (tests 4–5) ───────────────────────────
 
     [Fact]
     public void TapeAdapter_ZeroBit_Generates4PulseHighLowPairs()
     {
         // A byte of 0x00: all 8 bits are 0. Each 0-bit = 4 × (HIGH, LOW).
         // The first bit (MSB) is 0, so ReadBit() should produce 4 HIGH+LOW pairs.
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x00]));
 
         // 0 bit → 4 pulses = 8 ReadBit() calls: true,false,true,false,true,false,true,false
@@ -80,7 +81,7 @@ public class Zx80TapeTests
     public void TapeAdapter_OneBit_Generates9PulseHighLowPairs()
     {
         // A byte of 0x80 (MSB=1): first bit is 1 → 9 × (HIGH, LOW) = 18 ReadBit() calls.
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x80]));
 
         var states = new List<bool>();
@@ -99,7 +100,7 @@ public class Zx80TapeTests
     public void TapeAdapter_AfterAllPulses_ReturnsSilence()
     {
         // Once all data is exhausted, ReadBit() returns true (silence = no signal).
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([])); // empty tape
         Assert.True(adapter.ReadBit());
     }
@@ -119,7 +120,7 @@ public class Zx80TapeTests
         const byte testByte = 0xA5;
         const int  expected  = 104; // 4×18 + 4×8
 
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([testByte]));
 
         Assert.Equal(expected, CountSignalStates(adapter));
@@ -129,7 +130,7 @@ public class Zx80TapeTests
     public void TapeAdapter_RoundTrip_AllZerosByte()
     {
         // 0x00 = 8 zero-bits → 8 × 8 states = 64 total.
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x00]));
         Assert.Equal(64, CountSignalStates(adapter));
     }
@@ -138,7 +139,7 @@ public class Zx80TapeTests
     public void TapeAdapter_RoundTrip_AllOnesByte()
     {
         // 0xFF = 8 one-bits → 8 × 18 states = 144 total.
-        var adapter = new Zx80TapeAdapter();
+        var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0xFF]));
         Assert.Equal(144, CountSignalStates(adapter));
     }
@@ -146,7 +147,7 @@ public class Zx80TapeTests
     // Count ReadBit() signal states until silence (two consecutive trues).
     // Pulse pairs are always HIGH(true)/LOW(false). When a HIGH is followed by another
     // HIGH, the data is exhausted. We peek on each HIGH to avoid counting silence.
-    private static int CountSignalStates(Zx80TapeAdapter adapter)
+    private static int CountSignalStates(SinclairTapeAdapter adapter)
     {
         int count = 0;
         while (true)
@@ -159,6 +160,7 @@ public class Zx80TapeTests
         }
         return count;
     }
+
 
     // ── Stub helpers ─────────────────────────────────────────────────────────
 

@@ -1,21 +1,18 @@
 using CpuZ80.Core;
 using Machines.Common;
+using Machines.Sinclair.Common;
 
 namespace Machines.Zx80;
 
 /// <summary>
 /// ZX80 I/O port bus.
-///
-/// IN  port: high byte selects keyboard half-row(s); returns active-low key state.
-///           Bit 6 of the result reflects the EAR tape input (0 = pulse, 1 = silence).
-/// OUT port: bit 3 drives the MIC tape output.
 /// </summary>
 internal sealed class Zx80PortBus : IPortBus
 {
-    private readonly Zx80KeyboardAdapter? _keyboard;
-    private readonly ITapeDevice?         _tape;
+    private readonly SinclairKeyboardAdapter? _keyboard;
+    private readonly ITapeDevice?            _tape;
 
-    public Zx80PortBus(Zx80KeyboardAdapter? keyboard, ITapeDevice? tape = null)
+    public Zx80PortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null)
     {
         _keyboard = keyboard;
         _tape     = tape;

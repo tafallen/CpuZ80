@@ -1,5 +1,7 @@
 using Adapters.Raylib;
 using Machines.Zx80;
+using Machines.Common;
+using Machines.Sinclair.Common;
 
 // ── argument parsing ──────────────────────────────────────────────────────────
 string? romPath  = null;
@@ -35,10 +37,10 @@ if (rom.Length != 0x1000)
     Console.Error.WriteLine($"WARNING: expected 4096 bytes, got {rom.Length}");
 
 // ── load tape ─────────────────────────────────────────────────────────────────
-Zx80TapeAdapter? tape = null;
+SinclairTapeAdapter? tape = null;
 if (tapePath is not null)
 {
-    tape = new Zx80TapeAdapter();
+    tape = new SinclairTapeAdapter();
     using var fs = File.OpenRead(tapePath);
     tape.Load(fs);
     Console.WriteLine($"Tape: {Path.GetFileName(tapePath)}");

@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Machines.Zx80\Machines.Zx80.csproj" />
+    <ProjectReference Include="..\..\src\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,5 +1,6 @@
 using CpuZ80.Core;
 using Machines.Common;
+using Machines.Sinclair.Common;
 
 namespace Machines.Zx80;
 
@@ -15,8 +16,8 @@ public sealed class Zx80Machine
     public Cpu Cpu { get; }
     public Ram Ram { get; }
 
-    private readonly Zx80Video   _video;
-    private readonly Zx80PortBus _ports;
+    private readonly SinclairVideo _video;
+    private readonly Zx80PortBus   _ports;
 
     /// <param name="romImage">4K ROM image (ZX80 BASIC ROM). Must be exactly 4096 bytes.</param>
     /// <param name="keyboard">Physical keyboard source. Pass null for headless/test use.</param>
@@ -33,11 +34,11 @@ public sealed class Zx80Machine
         bus.Map(0x0000, 0x0FFF, rom);
         bus.Map(0x4000, 0x43FF, Ram);
 
-        var kbAdapter = keyboard is not null ? new Zx80KeyboardAdapter(keyboard) : null;
+        var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
         _ports = new Zx80PortBus(kbAdapter, tape);
 
         Cpu = new Cpu(bus, _ports);
-        _video = new Zx80Video(rom, Ram);
+        _video = new SinclairVideo(rom, Ram, 0x0E00);
     }
 
     /// <summary>Read a hardware port — delegates to the port bus. Useful for testing.</summary>

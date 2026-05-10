@@ -1,14 +1,16 @@
 using Machines.Common;
 
-namespace Machines.Zx81;
+namespace Machines.Sinclair.Common;
 
 /// <summary>
-/// ITapeDevice implementation for ZX81 .p tape files.
-/// 
-/// The .p format is a raw RAM dump from 0x4000 to E_LINE.
-/// Encoding is identical to ZX80 (pulse-count).
+/// ITapeDevice implementation for Sinclair pulse-count tape encoding.
+/// Used by ZX80 (.o files) and ZX81 (.p files).
+///
+/// Encoding: pulse-count, MSB-first per byte.
+///   0 bit → 4 HIGH+LOW pulse pairs (8 ReadBit() calls)
+///   1 bit → 9 HIGH+LOW pulse pairs (18 ReadBit() calls)
 /// </summary>
-public sealed class Zx81TapeAdapter : ITapeDevice
+public sealed class SinclairTapeAdapter : ITapeDevice
 {
     private readonly Queue<bool> _signal = new();
 
@@ -22,7 +24,7 @@ public sealed class Zx81TapeAdapter : ITapeDevice
 
     public bool ReadBit() => _signal.Count > 0 ? _signal.Dequeue() : true; // true = silence
 
-    public void WriteBit(bool bit) { }
+    public void WriteBit(bool bit) { /* MIC output not yet implemented for physical file write */ }
 
     private void EnqueueByte(byte b)
     {

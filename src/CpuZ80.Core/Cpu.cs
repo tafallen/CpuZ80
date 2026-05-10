@@ -8,7 +8,8 @@ public sealed partial class Cpu
 {
     private readonly IBus _bus;
     private readonly IPortBus? _ports;
-    private readonly ICpuHost? _host;
+    private readonly ICpuHost _host;
+    private readonly bool _hasHost;
 
     public bool IFF1 { get; set; }
     public bool IFF2 { get; set; }
@@ -101,7 +102,7 @@ public sealed partial class Cpu
     /// </summary>
     private void PortTick(ushort port)
     {
-        _host?.OnPortAccess(port, this);
+        if (_hasHost) _host.OnPortAccess(port, this);
         Tick(4);
     }
 
@@ -109,7 +110,8 @@ public sealed partial class Cpu
     {
         _bus = bus;
         _ports = ports;
-        _host = host;
+        _host = host ?? ICpuHost.NullHost.Instance;
+        _hasHost = host is not null;
     }
 
     public void Reset()
@@ -156,13 +158,13 @@ public sealed partial class Cpu
 
     private byte Read(ushort addr)
     {
-        _host?.OnMemoryAccess(addr, this);
+        if (_hasHost) _host.OnMemoryAccess(addr, this);
         return _bus.Read(addr);
     }
 
     private void Write(ushort addr, byte val)
     {
-        _host?.OnMemoryAccess(addr, this);
+        if (_hasHost) _host.OnMemoryAccess(addr, this);
         _bus.Write(addr, val);
     }
 

@@ -1,31 +1,30 @@
 using CpuZ80.Core;
 using Machines.Common;
 
-namespace Machines.Zx80;
+namespace Machines.Sinclair.Common;
 
 /// <summary>
-/// Handles display file parsing and pixel generation for the Sinclair ZX80.
+/// Shared logic for Sinclair-style character rendering (ZX80, ZX81).
 /// </summary>
-public sealed class Zx80Video
+public sealed class SinclairVideo
 {
-    private const int   FontOffset = 0x0E00;
-    private const uint  Ink        = 0xFF000000u; // black
-    private const uint  Paper      = 0xFFFFFFFFu; // white
-
-    private const ushort D_FILE_PTR = 0x400C; // System variable for Display File address
+    private const uint Ink   = 0xFF000000u; // black
+    private const uint Paper = 0xFFFFFFFFu; // white
 
     private readonly Rom _rom;
     private readonly Ram _ram;
+    private readonly int _fontOffset;
 
-    public Zx80Video(Rom rom, Ram ram)
+    public SinclairVideo(Rom rom, Ram ram, int fontOffset)
     {
-        _rom = rom;
-        _ram = ram;
+        _rom        = rom;
+        _ram        = ram;
+        _fontOffset = fontOffset;
     }
 
     /// <summary>
-    /// Renders the current display file to the sink as a 256x192 frame.
-    /// The ZX80 display file is a series of character codes terminated by HALT (0x76) for each line.
+    /// Renders a Sinclair display file to the sink.
+    /// Supports collapsed rows (shorter than 32 characters) terminated by HALT (0x76).
     /// </summary>
     public void Render(IVideoSink sink)
     {
@@ -45,7 +44,6 @@ public sealed class Zx80Video
 
         for (int charRow = 0; charRow < 24; charRow++)
         {
-            // Collect up to 32 char codes for this row, stopping at HALT (0x76).
             var rowCodes = new byte[32];
             int colCount = 0;
             while (pos < ram.Length && colCount < 32)
@@ -56,7 +54,7 @@ public sealed class Zx80Video
             }
             // Consume HALT if we hit the column limit without seeing one.
             while (pos < ram.Length && ram[pos] != 0x76) pos++;
-            if (pos < ram.Length) pos++; // skip the HALT
+            if (pos < ram.Length) pos++; 
 
             rowDone:
             RenderRow(pixels, rowCodes, colCount, charRow, rom);
@@ -73,11 +71,11 @@ public sealed class Zx80Video
             int  charBase = code & 0x3F;
             bool inverted = (code & 0x80) != 0;
 
-            int fontOffset = FontOffset + charBase * 8;
+            int glyphOffset = _fontOffset + charBase * 8;
 
             for (int pixRow = 0; pixRow < 8; pixRow++)
             {
-                byte fontByte = rom[fontOffset + pixRow];
+                byte fontByte = rom[glyphOffset + pixRow];
                 int  pixelY   = charRow * 8 + pixRow;
 
                 for (int bit = 0; bit < 8; bit++)

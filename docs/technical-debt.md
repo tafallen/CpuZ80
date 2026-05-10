@@ -18,6 +18,8 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-010 | Test Suite Organization | Low | **RESOLVED** | Low |
 | TD-011 | Register Definition Consistency | Low | **RESOLVED** | Low |
 | TD-012 | Wait State Performance | Low | **RESOLVED** | Low |
+| TD-013 | Sinclair Hardware Logic Redundancy | High | **RESOLVED** | Medium |
+| TD-014 | CPU-Host Call Optimization | Medium | **RESOLVED** | Low |
 
 ---
 
@@ -58,3 +60,9 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 
 ### TD-012: Wait State Performance (RESOLVED)
 - **Status:** Optimized the `Tick` mechanism by introducing a `WaitCycles` counter for efficient multi-cycle batch waits, reducing the overhead of polling for long hardware delays.
+
+### TD-013: Sinclair Hardware Logic Redundancy (RESOLVED)
+- **Status:** Consolidated keyboard, tape, and video rendering logic into `Machines.Sinclair.Common`. Both ZX80 and ZX81 now leverage shared adapters and rendering engines, drastically reducing code duplication and maintenance cost.
+
+### TD-014: CPU-Host Call Optimization (RESOLVED)
+- **Status:** Introduced a `NullHost` singleton and `_hasHost` boolean flag to ensure zero virtual-call overhead during performance-critical memory and I/O cycles when no hardware host is active.

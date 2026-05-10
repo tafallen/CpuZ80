@@ -11,6 +11,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Adapters.Raylib\Adapters.Raylib.csproj" />
     <ProjectReference Include="..\Machines.Zx80\Machines.Zx80.csproj" />
+    <ProjectReference Include="..\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,6 +1,7 @@
 using CpuZ80.Core;
 using Machines.Common;
 using Machines.Zx80;
+using Machines.Sinclair.Common;
 
 namespace Machines.Zx81;
 
@@ -18,8 +19,8 @@ public sealed class Zx81Machine
     public Ram Ram { get; }
     public Zx81CpuHost Host { get; }
 
-    private readonly Zx81Video   _video;
-    private readonly Zx81PortBus _ports;
+    private readonly SinclairVideo _video;
+    private readonly Zx81PortBus   _ports;
 
     /// <param name="romImage">8K ROM image. Must be exactly 8192 bytes.</param>
     /// <param name="keyboard">Physical keyboard source.</param>
@@ -42,12 +43,12 @@ public sealed class Zx81Machine
             bus.Map(addr, (ushort)(addr + 0x03FF), Ram);
         }
 
-        var kbAdapter = keyboard is not null ? new Zx80KeyboardAdapter(keyboard) : null;
+        var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
         _ports = new Zx81PortBus(kbAdapter, tape);
         Host = new Zx81CpuHost();
 
         Cpu = new Cpu(bus, _ports, Host);
-        _video = new Zx81Video(rom, Ram);
+        _video = new SinclairVideo(rom, Ram, 0x1E00);
     }
 
     public void Reset()
@@ -94,10 +95,10 @@ public sealed class Zx81Machine
 
 internal sealed class Zx81PortBus : IPortBus
 {
-    private readonly Zx80KeyboardAdapter? _keyboard;
-    private readonly ITapeDevice?         _tape;
+    private readonly SinclairKeyboardAdapter? _keyboard;
+    private readonly ITapeDevice?            _tape;
 
-    public Zx81PortBus(Zx80KeyboardAdapter? keyboard, ITapeDevice? tape = null)
+    public Zx81PortBus(SinclairKeyboardAdapter? keyboard, ITapeDevice? tape = null)
     {
         _keyboard = keyboard;
         _tape     = tape;
