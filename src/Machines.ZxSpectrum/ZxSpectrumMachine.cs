@@ -21,11 +21,10 @@ public sealed class ZxSpectrumMachine
     private readonly ZxSpectrumVideo   _video;
     private readonly BeeperDevice      _beeper;
     private readonly IAudioSink?       _audioSink;
+    
     private int _frameCounter;
-    private ulong _frameStartCycles;
-
-    // Transition buffering to prevent race conditions during rendering
-    private readonly List<(ulong TState, byte Color)> _renderBorderTransitions = new(256);
+    private ulong _lastFrameStartCycles;
+    private ulong _renderFrameStartCycles;
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -54,56 +53,64 @@ public sealed class ZxSpectrumMachine
     public void Reset()
     {
         Cpu.Reset();
-        Cpu.I = 0x3F; // Default font in ROM
+        Cpu.I = 0x3F; 
         _frameCounter = 0;
-        _frameStartCycles = 0;
+        _lastFrameStartCycles = 0;
+        _renderFrameStartCycles = 0;
         _beeper.Reset(0);
-        _ports.ClearTransitions();
-        _renderBorderTransitions.Clear();
+        _ports.Reset();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
     public void WriteMemory(ushort address, byte value) => Cpu.WriteMemory(address, value);
-
     public byte ReadPort(ushort address) => _ports.In(address);
-    public void WritePort(ushort address, byte value) => _ports.Out(address, value);
+    public void WritePort(ushort address, byte value)
+    {
+        _host.OnPortAccess(address, Cpu);
+        _ports.Out(address, value);
+    }
 
     public void Step() => Cpu.Step();
 
     public void RunFrame()
     {
-        _frameStartCycles = Cpu.TotalCycles;
+        _lastFrameStartCycles = Cpu.TotalCycles;
 
-        // Take a snapshot of transitions from the PREVIOUS frame for rendering,
-        // then clear the list for the NEW frame.
-        _renderBorderTransitions.Clear();
-        _renderBorderTransitions.AddRange(_ports.BorderTransitions);
-        _ports.ClearTransitions();
+        // Start of frame: Commit and clear transitions
+        _ports.CommitTransitions();
+        _beeper.CommitTransitions();
+        
+        // Snapshot the cycle anchor for rendering
+        _renderFrameStartCycles = _lastFrameStartCycles;
 
-        // Assert INT signal at the start of the frame.
+        // Assert 50Hz INT
         Cpu.IntPin = true;
-
-        ulong target = Cpu.TotalCycles + CyclesPerFrame;
         ulong releaseIntAt = Cpu.TotalCycles + 32;
+        ulong target = Cpu.TotalCycles + CyclesPerFrame;
 
         while (Cpu.TotalCycles < target)
         {
             if (Cpu.IntPin && Cpu.TotalCycles >= releaseIntAt)
-            {
                 Cpu.IntPin = false;
-            }
+
             Step();
+            
+            // In a real Spectrum, the Floating Bus value changes constantly.
+            // For now, we update it once per instruction to a stub value.
+            // Real scanline-based floating bus will be in US-405.
+            _ports.FloatingBusValue = 0xFF; 
         }
         _frameCounter++;
     }
 
     public void RenderFrame(IVideoSink sink)
     {
-        // Video: Render using the snapshot from the start of RunFrame
         bool flashInverted = (_frameCounter & 0x10) != 0;
-        _video.Render(sink, _renderBorderTransitions, _ports.BorderColor, flashInverted, _frameStartCycles);
+        
+        // Video rendering uses the snapshotted border transitions and frame anchor
+        _video.Render(sink, _ports.RenderBorderTransitions, _ports.BorderColor, flashInverted, _renderFrameStartCycles);
 
-        // Audio
+        // Audio rendering uses the snapshotted transitions
         if (_audioSink is not null)
         {
             _beeper.Render(_audioSink, Cpu.TotalCycles);

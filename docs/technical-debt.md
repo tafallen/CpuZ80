@@ -20,49 +20,15 @@ This document tracks identified technical debt, architectural shortcuts, and sta
 | TD-012 | Wait State Performance | Low | **RESOLVED** | Low |
 | TD-013 | Sinclair Hardware Logic Redundancy | High | **RESOLVED** | Medium |
 | TD-014 | CPU-Host Call Optimization | Medium | **RESOLVED** | Low |
+| TD-015 | Thread-Safe Visuals & Audio | High | **RESOLVED** | Medium |
+| TD-016 | Floating Bus Support | Medium | **RESOLVED** | Low |
 
 ---
 
 ## Detailed Items
 
-### TD-001: Instruction Logic Divergence (RESOLVED)
-- **Status:** Consolidated all undocumented flag leakage logic into unified `SetUndocumentedFlags` helpers consumed by the CodeGen engine and manual helper methods. No logic duplication remains.
+### TD-015: Thread-Safe Visuals & Audio (RESOLVED)
+- **Status:** Implemented a double-buffering mechanism for both border and audio transitions. `ZxSpectrumMachine` now snapshots hardware state at the start of a frame, ensuring the UI rendering thread has a stable, immutable data set while the emulation thread continues in the background. This eliminates `InvalidOperationException` and visual flickering.
 
-### TD-002: Exhaustive Test Stability (RESOLVED)
-- **Status:** Moved the billions-of-cycles ZEXALL instruction exerciser into a standalone CLI project (`CpuZ80.Exerciser`). This bypassed .NET test-host stability issues and provided a robust, high-performance verification environment.
-
-### TD-003: T-State Granularity (RESOLVED)
-- **Status:** Refactored the entire instruction set to interleave `Tick(n)` calls with memory and I/O bus operations at the M-cycle level. The emulator now correctly models the mid-instruction timing required for hardware contention.
-
-### TD-004: Prefix Redirection Fragility (RESOLVED)
-- **Status:** Eliminated the `_indexMode` transient state machine and fragile redirection logic. Replaced with explicit, generated dispatch tables for `DD` and `FD` prefixes, achieving silicon-accurate register redirection without runtime overhead.
-
-### TD-005: Incomplete CodeGen Migration (RESOLVED)
-- **Status:** Completed the migration of 100% of the Z80 instruction set (including Block Ops, Extended, and Indexed) to the high-performance generated `switch` dispatcher. Legacy `Action[]` delegate arrays have been removed.
-
-### TD-006: CodeGen Code Quality (RESOLVED)
-- **Status:** Suppressed localized `CS0162` warnings in `Cpu.Generated.cs` and cleaned up constant condition checks (like `if (6 != 6)`) in the Code Generator. The project now builds with **0 warnings**.
-
-### TD-007: AddressDecoder Range Granularity (RESOLVED)
-- **Status:** Upgraded the `AddressDecoder` from a 256-page table to a full 64 KB byte-level lookup array. This provides absolute precision for any address range with zero routing overhead.
-
-### TD-008: Bus Architecture: Wait State Support (RESOLVED)
-- **Status:** Implemented a `WaitPin` property on the `Cpu` and updated the `Tick(n)` mechanism to poll this pin during every T-state. This allows hardware components to pause the CPU mid-instruction for cycle-perfect synchronization.
-
-### TD-009: Port Bus Architecture: Custom Timing (RESOLVED)
-- **Status:** Abstracted I/O timing into a `PortTick(ushort port)` helper. This allows machine implementations (like the ZX Spectrum ULA) to add custom contention or wait-states to specific I/O address ranges without modifying the CPU core.
-
-### TD-010: Test Suite Organization (RESOLVED)
-- **Status:** Reorganized `tests/CpuZ80.Tests` into a logical directory structure (Arithmetic, Bitwise, ControlFlow, Hardware, etc.) matching the core project's modular design.
-
-### TD-011: Register Definition Consistency (RESOLVED)
-- **Status:** Converted `I` and `R` registers from public fields to properties with `internal set`, ensuring consistent encapsulation across the CPU state.
-
-### TD-012: Wait State Performance (RESOLVED)
-- **Status:** Optimized the `Tick` mechanism by introducing a `WaitCycles` counter for efficient multi-cycle batch waits, reducing the overhead of polling for long hardware delays.
-
-### TD-013: Sinclair Hardware Logic Redundancy (RESOLVED)
-- **Status:** Consolidated keyboard, tape, and video rendering logic into `Machines.Sinclair.Common`. Both ZX80 and ZX81 now leverage shared adapters and rendering engines, drastically reducing code duplication and maintenance cost.
-
-### TD-014: CPU-Host Call Optimization (RESOLVED)
-- **Status:** Introduced a `NullHost` singleton and `_hasHost` boolean flag to ensure zero virtual-call overhead during performance-critical memory and I/O cycles. Optimized the `Tick` fast-path for the common case where no wait-states are active.
+### TD-016: Floating Bus Support (RESOLVED)
+- **Status:** Enhanced `ZxSpectrumPortBus` to support the iconic Spectrum "Floating Bus" behavior. Reads from unmapped I/O ports now return the ULA's currently processed attribute byte instead of a static `0xFF`, a critical requirement for certain copy-protection and visual effect routines.
