@@ -8,6 +8,8 @@ public sealed partial class Cpu
 {
     private readonly IBus _bus;
     private readonly IPortBus? _ports;
+    private readonly ICpuHost? _host;
+
     public bool IFF1 { get; set; }
     public bool IFF2 { get; set; }
     private bool _halted;
@@ -99,15 +101,15 @@ public sealed partial class Cpu
     /// </summary>
     private void PortTick(ushort port)
     {
-        // Machines like the Spectrum can add contention here.
+        _host?.OnPortAccess(port, this);
         Tick(4);
     }
 
-    public Cpu(IBus bus, IPortBus? ports = null)
+    public Cpu(IBus bus, IPortBus? ports = null, ICpuHost? host = null)
     {
         _bus = bus;
         _ports = ports;
-        // Prefix dispatchers are now generated
+        _host = host;
     }
 
     public void Reset()
@@ -149,10 +151,22 @@ public sealed partial class Cpu
         StepGenerated(opcode);
     }
 
+    private byte Read(ushort addr)
+    {
+        _host?.OnMemoryAccess(addr, this);
+        return _bus.Read(addr);
+    }
+
+    private void Write(ushort addr, byte val)
+    {
+        _host?.OnMemoryAccess(addr, this);
+        _bus.Write(addr, val);
+    }
+
     private byte Fetch()
     {
         R = (byte)((R & 0x80) | ((R + 1) & 0x7F)); // Bit 7 is preserved, bits 0-6 increment
-        return _bus.Read(PC++);
+        return Read(PC++);
     }
 
     private ushort FetchWord()
@@ -164,20 +178,20 @@ public sealed partial class Cpu
 
     private ushort ReadWord(ushort addr)
     {
-        byte lo = _bus.Read(addr);
-        byte hi = _bus.Read((ushort)(addr + 1));
+        byte lo = Read(addr);
+        byte hi = Read((ushort)(addr + 1));
         return (ushort)((hi << 8) | lo);
     }
 
     private void WriteWord(ushort addr, ushort val)
     {
-        _bus.Write(addr, (byte)(val & 0xFF));
-        _bus.Write((ushort)(addr + 1), (byte)(val >> 8));
+        Write(addr, (byte)(val & 0xFF));
+        Write((ushort)(addr + 1), (byte)(val >> 8));
     }
 
     private void SetRegWZ(byte val)
     {
-        _bus.Write(WZ, val);
+        Write(WZ, val);
     }
 
     private byte GetReg(int index)

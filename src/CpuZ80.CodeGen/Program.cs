@@ -144,8 +144,8 @@ class Program
         baseInstructions.Add(new Instruction(0xE9, "JP (HL)", "PC = HL", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x76, "HALT", "{ _halted = true; PC--; }", new[] { 4 }));
         baseInstructions.Add(new Instruction(0x10, "DJNZ e", "{ sbyte e = (sbyte)Fetch(); B--; if (B != 0) { PC = (ushort)(PC + e); WZ = PC; Tick(5); } }", new[] { 4, 4 }));
-        baseInstructions.Add(new Instruction(0xD3, "OUT (n), A", "{ byte n = Fetch(); PortTick(n); _ports?.Out((ushort)((A << 8) | n), A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }", new[] { 4, 3 }));
-        baseInstructions.Add(new Instruction(0xDB, "IN A, (n)", "{ byte n = Fetch(); PortTick(n); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); }", new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0xD3, "OUT (n), A", "{ byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); _ports?.Out(addr, A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }", new[] { 4, 3 }));
+        baseInstructions.Add(new Instruction(0xDB, "IN A, (n)", "{ byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); A = _ports?.In(addr) ?? 0xFF; WZ = (ushort)(addr + 1); }", new[] { 4, 3 }));
 
         // --- CB Instructions ---
         for (int op = 0; op < 8; op++)

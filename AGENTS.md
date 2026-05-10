@@ -29,7 +29,8 @@ This project emulates the Zilog Z80 CPU with a focus on functional accuracy and 
 
 - `IBus`: Memory read/write.
 - `IPortBus`: I/O port `In`/`Out`.
-- `AddressDecoder`: Routes traffic using a last-registration-wins mapping strategy.
+- `ICpuHost`: Injected environment for custom hardware timing (Wait states/Contention).
+- `AddressDecoder`: Routes traffic using a high-speed O(1) page-table strategy.
 
 ## Repository Layout
 

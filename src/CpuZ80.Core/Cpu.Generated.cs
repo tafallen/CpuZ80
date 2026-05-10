@@ -220,7 +220,7 @@ public sealed partial class Cpu
             case 0xD0: /* RET NC */ { Tick(5); if (!!FlagC) return; Tick(6); PC = Pop(); } break;
             case 0xD1: /* POP DE */ { Tick(4); Tick(3); byte lo = _bus.Read(SP); SP++; Tick(3); byte hi = _bus.Read(SP); SP++; DE = (ushort)((hi << 8) | lo); } break;
             case 0xD2: /* JP NC, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (!FlagC) PC = (ushort)(lo | (hi << 8)); } break;
-            case 0xD3: /* OUT (n), A */ { Tick(4); { byte n = Fetch(); PortTick(n); _ports?.Out((ushort)((A << 8) | n), A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }; Tick(3); } break;
+            case 0xD3: /* OUT (n), A */ { Tick(4); { byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); _ports?.Out(addr, A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }; Tick(3); } break;
             case 0xD4: /* CALL NC, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (!FlagC) { ushort nn = (ushort)(lo | (hi << 8)); Push(PC); PC = nn; Tick(7); }; } break;
             case 0xD5: /* PUSH DE */ { Tick(5); ushort v = (ushort)(DE); Tick(3); SP--; _bus.Write(SP, (byte)(v >> 8)); Tick(3); SP--; _bus.Write(SP, (byte)(v & 0xFF)); } break;
             case 0xD6: /* SUB n */ { Tick(4); DoSub(Fetch()); Tick(3); } break;
@@ -228,7 +228,7 @@ public sealed partial class Cpu
             case 0xD8: /* RET C */ { Tick(5); if (!FlagC) return; Tick(6); PC = Pop(); } break;
             case 0xD9: /* EXX */ { Tick(4); EXX(); } break;
             case 0xDA: /* JP C, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (FlagC) PC = (ushort)(lo | (hi << 8)); } break;
-            case 0xDB: /* IN A, (n) */ { Tick(4); { byte n = Fetch(); PortTick(n); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); }; Tick(3); } break;
+            case 0xDB: /* IN A, (n) */ { Tick(4); { byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); A = _ports?.In(addr) ?? 0xFF; WZ = (ushort)(addr + 1); }; Tick(3); } break;
             case 0xDC: /* CALL C, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (FlagC) { ushort nn = (ushort)(lo | (hi << 8)); Push(PC); PC = nn; Tick(7); }; } break;
             case 0xDE: /* SBC A, n */ { Tick(4); DoSbc(Fetch()); Tick(3); } break;
             case 0xDF: /* RST 18h */ { Tick(4); { Push(PC); PC = 0x18; }; Tick(3); Tick(4); } break;
@@ -1558,7 +1558,7 @@ public sealed partial class Cpu
             case 0xD0: /* RET NC */ { Tick(5); if (!!FlagC) return; Tick(6); PC = Pop(); } break;
             case 0xD1: /* POP DE */ { Tick(4); Tick(3); byte lo = _bus.Read(SP); SP++; Tick(3); byte hi = _bus.Read(SP); SP++; DE = (ushort)((hi << 8) | lo); } break;
             case 0xD2: /* JP NC, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (!FlagC) PC = (ushort)(lo | (hi << 8)); } break;
-            case 0xD3: /* OUT (n), A */ { Tick(4); { byte n = Fetch(); PortTick(n); _ports?.Out((ushort)((A << 8) | n), A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }; Tick(3); } break;
+            case 0xD3: /* OUT (n), A */ { Tick(4); { byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); _ports?.Out(addr, A); WZ = (ushort)((A << 8) | ((n + 1) & 0xFF)); }; Tick(3); } break;
             case 0xD4: /* CALL NC, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (!FlagC) { ushort nn = (ushort)(lo | (hi << 8)); Push(PC); PC = nn; Tick(7); }; } break;
             case 0xD5: /* PUSH DE */ { Tick(5); ushort v = (ushort)(DE); Tick(3); SP--; _bus.Write(SP, (byte)(v >> 8)); Tick(3); SP--; _bus.Write(SP, (byte)(v & 0xFF)); } break;
             case 0xD6: /* SUB n */ { Tick(4); DoSub(Fetch()); Tick(3); } break;
@@ -1566,7 +1566,7 @@ public sealed partial class Cpu
             case 0xD8: /* RET C */ { Tick(5); if (!FlagC) return; Tick(6); PC = Pop(); } break;
             case 0xD9: /* EXX */ { Tick(4); EXX(); } break;
             case 0xDA: /* JP C, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (FlagC) PC = (ushort)(lo | (hi << 8)); } break;
-            case 0xDB: /* IN A, (n) */ { Tick(4); { byte n = Fetch(); PortTick(n); ushort port = (ushort)((A << 8) | n); A = _ports?.In(port) ?? 0xFF; WZ = (ushort)(port + 1); }; Tick(3); } break;
+            case 0xDB: /* IN A, (n) */ { Tick(4); { byte n = Fetch(); ushort addr = (ushort)((A << 8) | n); PortTick(addr); A = _ports?.In(addr) ?? 0xFF; WZ = (ushort)(addr + 1); }; Tick(3); } break;
             case 0xDC: /* CALL C, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); if (FlagC) { ushort nn = (ushort)(lo | (hi << 8)); Push(PC); PC = nn; Tick(7); }; } break;
             case 0xDE: /* SBC A, n */ { Tick(4); DoSbc(Fetch()); Tick(3); } break;
             case 0xDF: /* RST 18h */ { Tick(4); { Push(PC); PC = 0x18; }; Tick(3); Tick(4); } break;
