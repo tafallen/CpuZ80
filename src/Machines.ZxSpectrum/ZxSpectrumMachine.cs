@@ -19,8 +19,13 @@ public sealed class ZxSpectrumMachine
     private readonly ZxSpectrumPortBus _ports;
     private readonly ZxSpectrumCpuHost _host;
     private readonly ZxSpectrumVideo   _video;
+    private readonly BeeperDevice      _beeper;
+    private readonly IAudioSink?       _audioSink;
     private int _frameCounter;
     private ulong _frameStartCycles;
+
+    // Transition buffering to prevent race conditions during rendering
+    private readonly List<(ulong TState, byte Color)> _renderBorderTransitions = new(256);
 
     public ZxSpectrumMachine(byte[] romImage, IPhysicalKeyboard? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
     {
@@ -46,9 +51,6 @@ public sealed class ZxSpectrumMachine
         _video = new ZxSpectrumVideo(Ram);
     }
 
-    private readonly BeeperDevice      _beeper;
-    private readonly IAudioSink?       _audioSink;
-
     public void Reset()
     {
         Cpu.Reset();
@@ -57,6 +59,7 @@ public sealed class ZxSpectrumMachine
         _frameStartCycles = 0;
         _beeper.Reset(0);
         _ports.ClearTransitions();
+        _renderBorderTransitions.Clear();
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -70,10 +73,14 @@ public sealed class ZxSpectrumMachine
     public void RunFrame()
     {
         _frameStartCycles = Cpu.TotalCycles;
+
+        // Take a snapshot of transitions from the PREVIOUS frame for rendering,
+        // then clear the list for the NEW frame.
+        _renderBorderTransitions.Clear();
+        _renderBorderTransitions.AddRange(_ports.BorderTransitions);
         _ports.ClearTransitions();
 
         // Assert INT signal at the start of the frame.
-        // On real hardware, the ULA holds this low for 32 T-states.
         Cpu.IntPin = true;
 
         ulong target = Cpu.TotalCycles + CyclesPerFrame;
@@ -92,12 +99,11 @@ public sealed class ZxSpectrumMachine
 
     public void RenderFrame(IVideoSink sink)
     {
-        // 1. Video
-        // Flash toggles every 16 frames (approx 0.32 seconds)
+        // Video: Render using the snapshot from the start of RunFrame
         bool flashInverted = (_frameCounter & 0x10) != 0;
-        _video.Render(sink, _ports.BorderTransitions, _ports.BorderColor, flashInverted, _frameStartCycles);
+        _video.Render(sink, _renderBorderTransitions, _ports.BorderColor, flashInverted, _frameStartCycles);
 
-        // 2. Audio
+        // Audio
         if (_audioSink is not null)
         {
             _beeper.Render(_audioSink, Cpu.TotalCycles);

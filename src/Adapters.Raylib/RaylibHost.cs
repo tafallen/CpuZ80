@@ -7,59 +7,52 @@ namespace Adapters.Raylib;
 /// <summary>
 /// Cross-platform host window using Raylib.
 /// Implements IVideoSink (renders pixel frames) and IPhysicalKeyboard (queries key state).
-///
-/// Copied from Cpu6502/Adapters.Raylib; Machines.Atom dependency removed.
-/// Audio (IAudioSink) is not implemented — add when a machine requires it.
-///
-/// Typical loop:
-/// <code>
-///   using var host = new RaylibHost("Sinclair ZX80", scale: 3);
-///   while (host.IsRunning)
-///   {
-///       host.PollEvents();
-///       machine.RunFrame();
-///       machine.RenderFrame(host);
-///   }
-/// </code>
 /// </summary>
 public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
 {
-    private readonly int     _scale;
-    private readonly int     _frameWidth;
-    private readonly int     _frameHeight;
-    private          Texture2D _texture;
-    private readonly uint[]  _rgbaBuffer;
-    private          bool    _disposed;
+    private readonly int _scale;
+    private int          _width;
+    private int          _height;
+    private Texture2D    _texture;
+    private uint[]       _rgbaBuffer;
+    private bool         _disposed;
 
-    public RaylibHost(string title = "ZX80", int scale = 3, int frameWidth = 256, int frameHeight = 192)
+    public RaylibHost(string title = "ZX Spectrum", int scale = 3, int width = 320, int height = 240)
     {
-        _scale       = scale;
-        _frameWidth  = frameWidth;
-        _frameHeight = frameHeight;
+        _scale  = scale;
+        _width  = width;
+        _height = height;
 
-        Raylib_cs.Raylib.InitWindow(frameWidth * scale, frameHeight * scale, title);
+        Raylib_cs.Raylib.SetTraceLogLevel(TraceLogLevel.None);
+        Raylib_cs.Raylib.InitWindow(width * scale, height * scale, title);
         Raylib_cs.Raylib.SetTargetFPS(50);
 
-        var img = Raylib_cs.Raylib.GenImageColor(frameWidth, frameHeight, Color.Black);
+        var img = Raylib_cs.Raylib.GenImageColor(width, height, Color.Black);
         _texture = Raylib_cs.Raylib.LoadTextureFromImage(img);
         Raylib_cs.Raylib.UnloadImage(img);
 
-        _rgbaBuffer = new uint[frameWidth * frameHeight];
+        _rgbaBuffer = new uint[width * height];
     }
 
     public bool IsRunning => !Raylib_cs.Raylib.WindowShouldClose();
 
-    /// <summary>Process OS events. Call once per frame before RunFrame.</summary>
     public void PollEvents() => Raylib_cs.Raylib.PollInputEvents();
 
-    // ── IVideoSink ────────────────────────────────────────────────────────────
-
-    /// <summary>
-    /// Converts ARGB32 pixels to RGBA32 (Raylib's native format), uploads to GPU,
-    /// and draws scaled to the window.
-    /// </summary>
     public unsafe void SubmitFrame(ReadOnlySpan<uint> pixels, int width, int height)
     {
+        // Resize texture/buffer if resolution changed (e.g. switching machines)
+        if (width != _width || height != _height)
+        {
+            _width = width;
+            _height = height;
+            Raylib_cs.Raylib.UnloadTexture(_texture);
+            var img = Raylib_cs.Raylib.GenImageColor(width, height, Color.Black);
+            _texture = Raylib_cs.Raylib.LoadTextureFromImage(img);
+            Raylib_cs.Raylib.UnloadImage(img);
+            _rgbaBuffer = new uint[width * height];
+            Raylib_cs.Raylib.SetWindowSize(width * _scale, height * _scale);
+        }
+
         int count = Math.Min(pixels.Length, _rgbaBuffer.Length);
         for (int i = 0; i < count; i++)
         {
@@ -80,12 +73,8 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IDisposable
         Raylib_cs.Raylib.EndDrawing();
     }
 
-    // ── IPhysicalKeyboard ─────────────────────────────────────────────────────
-
     public bool IsKeyDown(PhysicalKey key) =>
         RaylibKeyMap.TryGet(key, out var rk) && Raylib_cs.Raylib.IsKeyDown(rk);
-
-    // ── IDisposable ───────────────────────────────────────────────────────────
 
     public void Dispose()
     {

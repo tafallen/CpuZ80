@@ -54,40 +54,39 @@ public sealed class ZxSpectrumVideo
     /// </summary>
     public void Render(IVideoSink sink, IReadOnlyList<(ulong TState, byte Color)> borderTransitions, byte finalBorderColor, bool flashInverted, ulong frameStartTState)
     {
-        var ram    = _ram.RawBytes;
+        var ram = _ram.RawBytes;
 
-        // 1. Fill the border. To support dynamic stripes, we map T-states to screen lines.
-        // The Spectrum frame is 312 lines total.
-        // Top border: 64 lines, Active: 192 lines, Bottom: 56 lines.
-        // Horizontal: 224 T-states per line.
+        // Border rendering parameters
         const int TStatesPerLine = 224;
+        const int TStatesPerPixel = 224 / 320; // 0.7 - wait, horizontal is not a simple div.
+        // Spectrum: 224 T-states per line. Border is displayed during certain T-states.
+        // For simplicity in a 320x240 view, we assume 1 pixel = 1/320th of a line.
 
         int transitionIdx = 0;
         byte currentBorder = borderTransitions.Count > 0 ? borderTransitions[0].Color : finalBorderColor;
         
         for (int line = 0; line < TotalHeight; line++)
         {
-            // Map 320x240 line to Spectrum frame line (centered)
-            // Spectrum frame is 312 lines, we render 240.
             int frameLine = line + (312 - TotalHeight) / 2;
-            ulong lineTState = frameStartTState + (ulong)(frameLine * TStatesPerLine);
+            ulong lineStartTState = frameStartTState + (ulong)(frameLine * TStatesPerLine);
+            int rowOffset = line * TotalWidth;
 
-            // Update border color based on transitions
-            while (transitionIdx < borderTransitions.Count && borderTransitions[transitionIdx].TState <= lineTState)
+            for (int x = 0; x < TotalWidth; x++)
             {
-                currentBorder = borderTransitions[transitionIdx].Color;
-                transitionIdx++;
-            }
+                // Mid-line horizontal border transition sampling
+                ulong pixelTState = lineStartTState + (ulong)((x * TStatesPerLine) / TotalWidth);
 
-            uint colorARGB = PaletteNormal[currentBorder & 0x07];
-            
-            // Fill the entire scanline in the buffer with the current border color
-            // The active area rendering will overwrite the center later.
-            int offset = line * TotalWidth;
-            Array.Fill(_pixelBuffer, colorARGB, offset, TotalWidth);
+                while (transitionIdx < borderTransitions.Count && borderTransitions[transitionIdx].TState <= pixelTState)
+                {
+                    currentBorder = borderTransitions[transitionIdx].Color;
+                    transitionIdx++;
+                }
+
+                _pixelBuffer[rowOffset + x] = PaletteNormal[currentBorder & 0x07];
+            }
         }
 
-        // 2. Render the 256x192 active area
+        // 2. Overwrite the 256x192 active area
         for (int third = 0; third < 3; third++)
         {
             for (int charRow = 0; charRow < 8; charRow++)
@@ -99,7 +98,6 @@ public sealed class ZxSpectrumVideo
                 {
                     int y = (third * 64) + (charRow * 8) + scanline;
                     int bitmapBase = GetBitmapAddress(third, charRow, scanline);
-                    
                     int pixelRowOffset = (y + BorderHeight) * TotalWidth + BorderWidth;
 
                     for (int col = 0; col < 32; col++)
@@ -135,14 +133,8 @@ public sealed class ZxSpectrumVideo
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetBitmapAddress(int third, int charRow, int scanline)
-    {
-        return (third << 11) | (scanline << 8) | (charRow << 5);
-    }
+    private static int GetBitmapAddress(int third, int charRow, int scanline) => (third << 11) | (scanline << 8) | (charRow << 5);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int GetAttributeAddress(int third, int charRow)
-    {
-        return 0x1800 + (third << 8) | (charRow << 5);
-    }
+    private static int GetAttributeAddress(int third, int charRow) => 0x1800 + (third << 8) | (charRow << 5);
 }
