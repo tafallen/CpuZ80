@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- AssemblyName must match the project name: BenchmarkDotNet locates the
+         project from the assembly to build its generated boilerplate. -->
+    <IsPackable>false</IsPackable>
+    <!-- Benchmarks must never run under the debugger's JIT or with tiered
+         compilation skewing steady-state numbers; BenchmarkDotNet enforces
+         Release, but be explicit so a stray Debug run fails loudly. -->
+    <Optimize Condition="'$(Configuration)' == 'Release'">true</Optimize>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CpuZ80.Core\CpuZ80.Core.csproj" />
+    <ProjectReference Include="..\..\src\Machines.Common\Machines.Common.csproj" />
+    <ProjectReference Include="..\..\src\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
+    <ProjectReference Include="..\..\src\Machines.ZxSpectrum\Machines.ZxSpectrum.csproj" />
+    <ProjectReference Include="..\..\src\Machines.Zx80\Machines.Zx80.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -35,8 +35,8 @@ public sealed partial class Cpu
     }
     private void LDI()
     {
-        byte val = _bus.Read(HL++);
-        _bus.Write(DE++, val);
+        byte val = Read(HL++);
+        Write(DE++, val);
         BC--;
         FlagN = false;
         FlagH = false;
@@ -59,8 +59,8 @@ public sealed partial class Cpu
 
     private void LDD()
     {
-        byte val = _bus.Read(HL--);
-        _bus.Write(DE--, val);
+        byte val = Read(HL--);
+        Write(DE--, val);
         BC--;
         FlagN = false;
         FlagH = false;
@@ -83,7 +83,7 @@ public sealed partial class Cpu
 
     private void CPI()
     {
-        byte val = _bus.Read(HL++);
+        byte val = Read(HL++);
         byte res = (byte)(A - val);
         BC--;
         WZ++;
@@ -110,7 +110,7 @@ public sealed partial class Cpu
 
     private void CPD()
     {
-        byte val = _bus.Read(HL--);
+        byte val = Read(HL--);
         byte res = (byte)(A - val);
         BC--;
         WZ--;
@@ -149,11 +149,11 @@ public sealed partial class Cpu
 
     private void RRD()
     {
-        byte mem = _bus.Read(HL);
+        byte mem = Read(HL);
         byte lowA = (byte)(A & 0x0F);
         A = (byte)((A & 0xF0) | (mem & 0x0F));
         mem = (byte)((lowA << 4) | (mem >> 4));
-        _bus.Write(HL, mem);
+        Write(HL, mem);
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);
@@ -162,7 +162,7 @@ public sealed partial class Cpu
     private void INI()
     {
         byte val = _ports?.In(BC) ?? 0xFF;
-        _bus.Write(HL++, val);
+        Write(HL++, val);
         B--;
         FlagN = true;
         FlagZ = B == 0;
@@ -177,7 +177,7 @@ public sealed partial class Cpu
     private void IND()
     {
         byte val = _ports?.In(BC) ?? 0xFF;
-        _bus.Write(HL--, val);
+        Write(HL--, val);
         B--;
         FlagN = true;
         FlagZ = B == 0;
@@ -191,7 +191,7 @@ public sealed partial class Cpu
 
     private void OUTI()
     {
-        byte val = _bus.Read(HL++);
+        byte val = Read(HL++);
         _ports?.Out(BC, val);
         B--;
         FlagN = true;
@@ -206,7 +206,7 @@ public sealed partial class Cpu
 
     private void OUTD()
     {
-        byte val = _bus.Read(HL--);
+        byte val = Read(HL--);
         _ports?.Out(BC, val);
         B--;
         FlagN = true;
@@ -221,11 +221,11 @@ public sealed partial class Cpu
 
     private void RLD()
     {
-        byte mem = _bus.Read(HL);
+        byte mem = Read(HL);
         byte lowA = (byte)(A & 0x0F);
         A = (byte)((A & 0xF0) | (mem >> 4));
         mem = (byte)((mem << 4) | lowA);
-        _bus.Write(HL, mem);
+        Write(HL, mem);
         FlagH = false;
         FlagN = false;
         SetLogicFlags(A);

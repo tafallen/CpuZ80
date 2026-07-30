@@ -12,3 +12,6 @@ TestResults/
 
 # Worktrees
 .worktrees/
+
+# BenchmarkDotNet run artifacts (results are recorded in BASELINE.md instead)
+BenchmarkDotNet.Artifacts/
