@@ -89,7 +89,13 @@ public sealed partial class Cpu
     public ushort WZ; // Internal temporary register (MEMPTR)
 
     public ulong TotalCycles { get; internal set; }
-    public bool WaitPin { get; set; }
+
+    /// <summary>
+    /// Wait states pending for the next <see cref="Tick"/>, used by machines to
+    /// model bus contention. A host adds to this from
+    /// <see cref="ICpuHost.OnMemoryAccess"/> or <see cref="ICpuHost.OnPortAccess"/>;
+    /// the cycles are consumed as extra T-states and the counter returns to zero.
+    /// </summary>
     public int WaitCycles { get; set; }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -99,9 +105,9 @@ public sealed partial class Cpu
         {
             TotalCycles++;
             
-            while (WaitPin || WaitCycles > 0)
+            while (WaitCycles > 0)
             {
-                if (WaitCycles > 0) WaitCycles--;
+                WaitCycles--;
                 TotalCycles++;
             }
         }

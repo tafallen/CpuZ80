@@ -10,12 +10,11 @@ namespace CpuZ80.Tests.Hardware;
 /// T-states by the next <c>Tick</c>.
 /// </summary>
 /// <remarks>
-/// NOTE ON <see cref="Cpu.WaitPin"/>: it is deliberately NOT exercised here.
-/// <c>Tick</c> spins on <c>while (WaitPin || WaitCycles > 0)</c> and nothing
-/// inside that loop clears <c>WaitPin</c>, so setting it true on a
-/// single-threaded emulator hangs forever. No production code sets it. A test
-/// that exercised it would not terminate — see the accompanying report rather
-/// than adding one.
+/// <see cref="Cpu.WaitCycles"/> is the only wait mechanism. A <c>WaitPin</c>
+/// property used to sit alongside it, but <c>Tick</c> spun on
+/// <c>while (WaitPin || WaitCycles > 0)</c> with nothing in that loop able to
+/// clear the pin, so asserting it on a single-threaded emulator never returned.
+/// Nothing ever set it; it was removed rather than tested.
 /// </remarks>
 public class WaitStateTests
 {

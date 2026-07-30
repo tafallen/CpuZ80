@@ -90,7 +90,10 @@ As a developer, I want a code generator that produces a high-performance `switch
 - [x] "Hot path" instructions (`NOP`, `ADD A, r`) migrated to `StepGenerated()`.
 - [x] All 8-bit and 16-bit instructions migrated.
 - [x] Prefixed instructions (`CB`, `ED`, `DD`, `FD`) migrated with silicon-accurate T-state interleaving.
-- [x] Implemented `WaitPin` support for cycle-perfect synchronization (Wait States).
+- [x] Implemented wait-state support (`WaitCycles`) for cycle-perfect synchronization.
+      A `WaitPin` property was also added here but removed later: `Tick` spun on it
+      with nothing able to clear the pin, so asserting it hung the emulator, and
+      nothing ever set it. `WaitCycles` covers the contention use case.
 - [x] Abstracted I/O port timing via `PortTick(n)` for custom hardware contention.
 
 ---

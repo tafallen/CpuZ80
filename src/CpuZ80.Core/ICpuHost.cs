@@ -8,7 +8,7 @@ public interface ICpuHost
 {
     /// <summary>
     /// Called when the CPU initiates an I/O operation (IN/OUT).
-    /// The host may update cpu.WaitCycles or cpu.WaitPin to model hardware contention.
+    /// The host may add to cpu.WaitCycles to model hardware contention.
     /// </summary>
     void OnPortAccess(ushort address, Cpu cpu);
 
