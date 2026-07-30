@@ -15,8 +15,20 @@ namespace CpuZ80.Benchmarks;
 /// </remarks>
 public static class Workloads
 {
-    /// <summary>Base address the workloads are assembled at (inside Spectrum RAM).</summary>
+    /// <summary>
+    /// Base address the workloads are assembled at: Spectrum RAM, but in the
+    /// UNCONTENDED bank (0x8000+), so these measure the emulator's own cost
+    /// without ULA wait states in the way.
+    /// </summary>
     public const ushort Origin = 0x8000;
+
+    /// <summary>
+    /// Base address for workloads that must exercise ULA memory contention.
+    /// On a 48K Spectrum only 0x4000-0x7FFF is contended — a workload at
+    /// <see cref="Origin"/> never triggers it, so contention-sensitive
+    /// benchmarks have to live down here.
+    /// </summary>
+    public const ushort ContendedOrigin = 0x6000;
 
     /// <summary>T-states in one ZX Spectrum 48K frame.</summary>
     public const ulong SpectrumFrameCycles = 69888;
@@ -122,6 +134,37 @@ public static class Workloads
         0x3E, 0x00,             // LD A,0x00   (speaker bit clear)
         0xD3, 0xFE,             // OUT (0xFE),A
         0xC3, 0x00, 0x80,       // JP loop
+    ];
+
+    /// <summary>
+    /// <c>LDIR</c> copying entirely within contended RAM, assembled at
+    /// <see cref="ContendedOrigin"/>. Copies 0x4000 -> 0x5000.
+    /// </summary>
+    public static byte[] ContendedBlockCopy =>
+    [
+        0x21, 0x00, 0x40,       // LD HL,0x4000
+        0x11, 0x00, 0x50,       // LD DE,0x5000
+        0x01, 0x00, 0x08,       // LD BC,0x0800
+        0xED, 0xB0,             // LDIR
+        0xC3, 0x00, 0x60,       // JP start
+    ];
+
+    /// <summary>
+    /// <c>CALL</c>/<c>RET</c> with the stack itself in contended RAM, assembled
+    /// at <see cref="ContendedOrigin"/>.
+    /// </summary>
+    public static byte[] ContendedStackHeavy =>
+    [
+        0x31, 0x00, 0x70,       // LD SP,0x7000  (contended)
+        // loop:
+        0xCD, 0x0D, 0x60,       // CALL sub
+        0xCD, 0x0D, 0x60,       // CALL sub
+        0xCD, 0x0D, 0x60,       // CALL sub
+        0xC3, 0x03, 0x60,       // JP loop
+        // sub: (0x600D)
+        0xE5, 0xD5, 0xC5, 0xF5, // PUSH HL / PUSH DE / PUSH BC / PUSH AF
+        0xF1, 0xC1, 0xD1, 0xE1, // POP AF / POP BC / POP DE / POP HL
+        0xC9,                   // RET
     ];
 
     /// <summary>Builds a bare CPU over a flat 64K byte array with <paramref name="program"/> at <see cref="Origin"/>.</summary>

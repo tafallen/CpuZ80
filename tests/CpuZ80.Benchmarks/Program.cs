@@ -67,10 +67,69 @@ public static class Metrics
         HookCoverage();
         Console.WriteLine();
 
+        ContentionThroughput();
+        Console.WriteLine();
+
         KeyboardQueries();
         Console.WriteLine();
 
         FrameAllocations();
+    }
+
+    /// <summary>
+    /// How much emulated throughput ULA contention costs, for code running in
+    /// contended RAM. This is the visible effect of routing stack and block
+    /// instructions through ICpuHost: before that fix, CALL/RET/LDIR escaped
+    /// contention entirely and these figures were near zero.
+    /// </summary>
+    private static void ContentionThroughput()
+    {
+        Console.WriteLine("  Emulated throughput lost to ULA contention (code in contended RAM 0x4000-0x7FFF):");
+        Console.WriteLine("    A frame is a fixed T-state budget, so wait states mean fewer instructions fit.");
+
+        foreach (var (name, program) in new[]
+                 {
+                     ("LDIR block copy", Workloads.ContendedBlockCopy),
+                     ("CALL/RET stack ", Workloads.ContendedStackHeavy),
+                 })
+        {
+            long bare = CountBare(program);
+            long hosted = CountHosted(program);
+            double lost = (bare - hosted) * 100.0 / bare;
+            Console.WriteLine($"    {name} : {bare,6} bare  {hosted,6} hosted  -> {lost,5:F1}% slower (expected: > 0)");
+        }
+    }
+
+    /// <summary>Instructions per frame with no host — the uncontended reference.</summary>
+    private static long CountBare(byte[] program)
+    {
+        var bus = new CountingBus();
+        Array.Copy(program, 0, bus.Data, Workloads.ContendedOrigin, program.Length);
+        var cpu = new Cpu(bus) { PC = Workloads.ContendedOrigin };
+
+        long instructions = 0;
+        ulong start = cpu.TotalCycles;
+        while (cpu.TotalCycles - start < Workloads.SpectrumFrameCycles) { cpu.Step(); instructions++; }
+        return instructions;
+    }
+
+    /// <summary>
+    /// Instructions per frame on a real machine, stepped from reset so the frame
+    /// position stays inside the ULA's visible window (T-states 14,336-57,343),
+    /// which is the only span where contention is applied.
+    /// </summary>
+    private static long CountHosted(byte[] program)
+    {
+        var machine = new ZxSpectrumMachine(new byte[0x4000], audio: new NullAudioSink());
+        machine.Reset();
+        for (int i = 0; i < program.Length; i++)
+            machine.Ram.Write((ushort)(Workloads.ContendedOrigin - 0x4000 + i), program[i]);
+        machine.Cpu.PC = Workloads.ContendedOrigin;
+
+        long instructions = 0;
+        ulong start = machine.Cpu.TotalCycles;
+        while (machine.Cpu.TotalCycles - start < Workloads.SpectrumFrameCycles) { machine.Step(); instructions++; }
+        return instructions;
     }
 
     /// <summary>Bus traffic and instruction count for a workload on a bare CPU.</summary>

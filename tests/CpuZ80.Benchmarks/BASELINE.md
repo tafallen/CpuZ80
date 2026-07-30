@@ -24,6 +24,10 @@ ICpuHost.OnMemoryAccess coverage (bus accesses vs hook calls):
   LDIR block copy  :   13321 accesses    13321 hooked  -> ok      (was 49.9% MISSED)
   CALL/RET/stack   :   19677 accesses    19677 hooked  -> ok      (was 11.4% MISSED)
 
+Emulated throughput lost to ULA contention (code in contended RAM):
+  LDIR block copy :   3332 bare    2917 hosted  ->  12.5% slower  (was ~0%)
+  CALL/RET stack  :   6933 bare    5657 hosted  ->  18.4% slower  (was ~0%)
+
 Host key queries per frame (tight IN 0xFE loop) : 15355            (unchanged — review item #6)
 Allocations per full frame                      : 0 bytes          (unchanged)
 ```
@@ -48,11 +52,22 @@ stack 200.2 → 173.3 us. The whole "after" run landed ~11.6% faster on benchmar
 the change cannot touch (`RunFrame`, `Zx80RenderFrame`), so the absolute drop is
 machine state, not the fix. Ratios above are the honest comparison.
 
-**Why the regression is smaller than expected:** a frame is a *fixed T-state
-budget*. Applying contention makes each affected instruction consume more
-T-states, so fewer instructions execute per frame. The extra hook work is
-partly cancelled by there being less work to do. LDIR still shows a clear +12%;
-the stack workload's cost disappears into that cancellation entirely.
+**What the +12% actually is — and what it is not.** These workloads are
+assembled at 0x8000, which on a 48K Spectrum is *uncontended*; only
+0x4000-0x7FFF is. So the wall-clock cost above is **not** contention being
+applied. It is the cost of the newly-hooked accesses calling
+`UpdateFloatingBus`, which runs on every `OnMemoryAccess` regardless of address.
+LDIR shows it because its hook count roughly doubled (49.9% -> 0% missed); the
+stack workload's 11.4% gap is too small to surface above noise.
+
+Review item #4 (make the floating bus lazy) should erase this regression
+entirely — it removes the very work these extra hook calls are doing.
+
+**The effect on the emulated machine** is separate and much larger. For code in
+contended RAM the emulated Spectrum now correctly runs slower, which is the
+whole point of the fix (see the contention figures in the metrics block above:
+12.5% for LDIR, 18.4% for CALL/RET). Before the fix those numbers were ~0 —
+contention simply never reached those instructions.
 
 ### CoreBenchmarks (bare CPU — no host attached, control group)
 
