@@ -98,18 +98,33 @@ public sealed partial class Cpu
     /// </summary>
     public int WaitCycles { get; set; }
 
+    /// <summary>
+    /// Advances the cycle counter by <paramref name="count"/> T-states, plus any
+    /// wait states a host has queued in <see cref="WaitCycles"/>.
+    /// </summary>
+    /// <remarks>
+    /// Closed form of the original per-T-state loop. Nothing inside that loop
+    /// could change <see cref="WaitCycles"/>, so it always drained the whole
+    /// pending count on its first iteration and ran dry for the rest — the total
+    /// was invariably <c>count + WaitCycles</c>. Every call site passes a
+    /// positive literal, so the guard folds away when this is inlined.
+    /// A negative <see cref="WaitCycles"/> is left untouched, matching the old
+    /// <c>while (WaitCycles > 0)</c> behaviour.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private void Tick(int count)
     {
-        for (int i = 0; i < count; i++)
+        if (count <= 0) return;
+
+        int waits = WaitCycles;
+        if (waits > 0)
         {
-            TotalCycles++;
-            
-            while (WaitCycles > 0)
-            {
-                WaitCycles--;
-                TotalCycles++;
-            }
+            WaitCycles = 0;
+            TotalCycles += (ulong)count + (ulong)waits;
+        }
+        else
+        {
+            TotalCycles += (ulong)count;
         }
     }
 

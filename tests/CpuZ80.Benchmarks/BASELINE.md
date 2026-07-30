@@ -12,6 +12,64 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: Tick() closed form (review item #3)
+
+Commit: `82ffc98` + Tick rewrite. Tests: 280 passing.
+
+`Tick` was a loop that incremented `TotalCycles` once per T-state and re-checked
+the wait condition each time. Nothing in that loop could change `WaitCycles`, so
+it always drained the whole pending count on its first iteration — the total was
+invariably `count + WaitCycles`. Replaced with that closed form.
+
+### Authoritative speedup — in-process A/B
+
+Two copies of `CpuZ80.Core` differing only in `Tick`, loaded into one process via
+`extern alias`, best-of-9 interleaved. This is the number to trust: both variants
+run under identical thermal and scheduler conditions.
+
+| Workload (80M T-states) | Loop | Closed form | Speedup |
+|---|---:|---:|---:|
+| Mixed ALU/memory | 132.69 ms (603 MHz) | 115.03 ms (696 MHz) | **1.15x** |
+| NOP sled (Tick-dominated) | 80.85 ms (990 MHz) | 67.57 ms (1184 MHz) | **1.20x** |
+
+Lower than the 1.20x/1.48x measured during the original review, because removing
+`WaitPin` (item #2) had already deleted the `WaitPin ||` test from the inner loop
+and banked part of the win.
+
+### Equivalence checks
+
+Contention metrics are bit-identical to the previous entry — 12.5% LDIR, 18.4%
+CALL/RET — and the contention tests assert exact per-access durations
+(`3 + pattern`), which exercise the `waits > 0` branch directly.
+
+### CoreBenchmarks (bare CPU)
+
+| Benchmark | Mean | Ratio |
+|---|---:|---:|
+| Mixed ALU/memory | 100.39 us | 1.00 |
+| Register-only (Tick-dominated) | 159.71 us | 1.59 |
+| LDIR block copy | 54.64 us | 0.55 |
+| CALL/RET/PUSH/POP | 81.95 us | 0.82 |
+
+### MachineBenchmarks
+
+| Benchmark | Mean | Ratio |
+|---|---:|---:|
+| Spectrum RunFrame | 185.49 us | 1.00 |
+| Spectrum RenderFrame | 289.66 us | 1.57 |
+| Spectrum full frame | 512.32 us | 2.77 |
+| Spectrum LDIR frame | 102.84 us | 0.56 |
+| Spectrum stack frame | 150.98 us | 0.82 |
+| ZX80 RenderFrame | 1.89 us | 0.01 |
+
+`RunFrame` dropped 204.0 -> 185.5 us. `RenderFrame` rose 222.1 -> 289.7 us on a
+run with visibly wider error bars (StdDev 41.7 us against 2.4 us in the previous
+entry) — that is machine noise, not a regression: `Tick` cannot affect the video
+path, and `ZX80 RenderFrame` was flat at 1.9 us. Re-measure `RenderFrame` on a
+quiet machine before reading anything into it.
+
+---
+
 ## After: route block and stack ops through ICpuHost (review item #1)
 
 Commit: `8bca8c1` + hook fix. Tests: 262 passing (176 core, up from 165).
