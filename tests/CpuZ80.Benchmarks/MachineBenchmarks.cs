@@ -19,7 +19,8 @@ namespace CpuZ80.Benchmarks;
 /// that with room for the host's own work.
 ///
 /// Tracks review findings:
-///   * FLOAT  — UpdateFloatingBus on every access + again per instruction (SpectrumRunFrame)
+///   * FLOAT  — floating bus sampling cost (SpectrumRunFrame). Fixed in the
+///              lazy-floating-bus change; this guards against it going eager again.
 ///   * BORDER — border pass paints 76,800 px then overwrites 49,152 (SpectrumRenderFrame)
 ///   * FILL   — SinclairVideo fills the whole buffer then overwrites (Zx80RenderFrame)
 ///   * ALLOC  — MemoryDiagnoser guards the current zero-allocation steady state

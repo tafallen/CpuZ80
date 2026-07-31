@@ -12,6 +12,56 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: lazy floating bus (review item #4)
+
+Commit: `2fc6564` + lazy floating bus. Tests: 294 passing (+14 floating-bus tests).
+
+`FerrantiUla5C6C.UpdateFloatingBus` ran on every memory access via
+`OnMemoryAccess`, and again after every instruction from
+`ZxSpectrumMachine.Step()` — a division and two modulos per call — to keep a
+value that is only read when a port with A0 high is read. It is now a computed
+property sampled at the moment of the port read.
+
+### Authoritative speedup — in-process A/B
+
+Two builds of `Machines.ZxSpectrum` differing only in the ULA (the pre-change
+files pulled from git), sharing one `CpuZ80.Core`, loaded into a single process
+via `extern alias`, best-of-9 interleaved.
+
+| Workload | Eager (before) | Lazy (after) | Speedup | Share of RunFrame removed |
+|---|---:|---:|---:|---:|
+| MixedAlu, uncontended RAM | 0.321 ms/frame | 0.185 ms/frame | **1.73x** | **42.3%** |
+| LDIR, contended RAM | 0.157 ms/frame | 0.104 ms/frame | **1.50x** | **33.4%** |
+
+Matches the 40-57% predicted in the review. This also refunds the ~12% that
+item #1 added to hosted LDIR: the extra hook calls it introduced were expensive
+precisely because each one recomputed the floating bus.
+
+### It was also a correctness fix
+
+The eager value was written on memory accesses, so by the time an `IN` executed
+the stored byte came from that instruction's operand fetch, not its I/O cycle —
+and therefore read back as 0xFF almost every time. Six of the fourteen new tests
+failed against the old implementation for this reason. Sampling at the port read
+is both cheaper and what the hardware does.
+
+### MachineBenchmarks — NOT USABLE, recorded only for completeness
+
+| Benchmark | Mean | StdDev | Ratio |
+|---|---:|---:|---:|
+| Spectrum RunFrame | 192.87 us | 44.51 us | 1.05 |
+| Spectrum RenderFrame | 370.14 us | 62.08 us | 2.02 |
+| Spectrum full frame | 482.26 us | 71.25 us | 2.63 |
+| Spectrum LDIR frame | 117.07 us | 29.30 us | 0.64 |
+| Spectrum stack frame | 106.40 us | 9.43 us | 0.58 |
+| ZX80 RenderFrame | 2.33 us | 0.18 us | 0.01 |
+
+StdDev runs to 23% of the mean and RatioSD to 0.34 — the machine was under load
+throughout. Do not read trends from these; re-measure on a quiet box. The A/B
+above is the number to cite.
+
+---
+
 ## After: Tick() closed form (review item #3)
 
 Commit: `82ffc98` + Tick rewrite. Tests: 280 passing.

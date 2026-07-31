@@ -22,6 +22,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private const int VisibleEndLine = 255;
     private const int VisibleTStatesStart = VisibleStartLine * CyclesPerLine;
     private const int VisibleTStatesEnd = (VisibleEndLine + 1) * CyclesPerLine;
+    private const byte OpenBus = 0xFF;
     private static readonly byte[] ContentionTable = [ 6, 5, 4, 3, 2, 1, 0, 0 ];
 
     private readonly ZxSpectrumVideo   _video;
@@ -37,7 +38,22 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private List<(ulong TState, byte Color)> _renderBorder = new(256);
 
     public byte BorderColor { get; private set; }
-    public byte FloatingBusValue { get; private set; } = 0xFF;
+
+    /// <summary>
+    /// What the ULA currently has on the data bus, as seen by a read of an
+    /// unattached port.
+    /// </summary>
+    /// <remarks>
+    /// Sampled on demand from the CPU's current T-state. It used to be
+    /// recomputed eagerly on every memory access, which cost a division and two
+    /// modulos per access — roughly half of <c>RunFrame</c> — to maintain a
+    /// value read only when a port with A0 high is read. Worse, it was sampled
+    /// at the wrong moment: by the time an IN executed, the stored value came
+    /// from that instruction's operand fetch rather than the I/O cycle, so it
+    /// almost always read back as 0xFF.
+    /// </remarks>
+    public byte FloatingBusValue => ComputeFloatingBus(_cpu?.TotalCycles ?? 0);
+
     private ulong _frameStartCycles;
 
     public FerrantiUla5C6C(Ram ram, SinclairKeyboardAdapter? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
@@ -146,7 +162,6 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
         {
             ApplyContention(cpu);
         }
-        UpdateFloatingBus(cpu);
     }
 
     private void ApplyContention(Cpu cpu)
@@ -162,45 +177,35 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
         }
     }
 
-    public void UpdateFloatingBus(Cpu cpu)
+    /// <summary>
+    /// The byte the ULA is putting on the bus at <paramref name="totalCycles"/>,
+    /// or 0xFF when it is not driving one.
+    /// </summary>
+    private byte ComputeFloatingBus(ulong totalCycles)
     {
-        int t = (int)(cpu.TotalCycles - _frameStartCycles);
-        if (t < VisibleTStatesStart || t >= VisibleTStatesEnd)
-        {
-            FloatingBusValue = 0xFF;
-            return;
-        }
+        int t = (int)(totalCycles - _frameStartCycles);
 
+        // Borders and vertical blanking: the ULA is not fetching.
+        if (t < VisibleTStatesStart || t >= VisibleTStatesEnd) return OpenBus;
+
+        // Only the first 128 T-states of each line are drawn.
         int lineCycle = t % CyclesPerLine;
-        if (lineCycle >= 128)
-        {
-            FloatingBusValue = 0xFF;
-            return;
-        }
+        if (lineCycle >= 128) return OpenBus;
 
-        // ULA fetches 2 bytes every 8 cycles (Bitmap, then Attribute).
-        // Cycle 0,1: Bitmap
-        // Cycle 2,3: Attribute <-- Floating Bus
-        // Cycle 4,5: Bitmap
-        // Cycle 6,7: Attribute <-- Floating Bus
-        
-        int charX = lineCycle / 4; // 0 to 31
-        int charY = (t - VisibleTStatesStart) / (CyclesPerLine); // 0 to 191
-        int charRow = charY / 8;
-        int third = charRow / 8;
-        int rowInThird = charRow % 8;
+        // The ULA fetches two bytes every 8 T-states:
+        //   0,1: bitmap    2,3: attribute <- visible to the CPU
+        //   4,5: bitmap    6,7: attribute <- visible to the CPU
+        // Check this before computing an address, so the common case is cheap.
+        int subCycle = lineCycle & 7;
+        if (subCycle != 2 && subCycle != 3 && subCycle != 6 && subCycle != 7) return OpenBus;
+
+        int charX      = lineCycle / 4;                              // 0..31
+        int charRow    = (t - VisibleTStatesStart) / CyclesPerLine / 8;
+        int third      = charRow / 8;
+        int rowInThird = charRow & 7;
 
         // Attribute address: 0x5800 + (third << 8) + (rowInThird << 5) + charX
-        ushort attrAddr = (ushort)(0x5800 + (third * 256) + (rowInThird * 32) + charX);
-        
-        int subCycle = lineCycle % 8;
-        if (subCycle == 2 || subCycle == 3 || subCycle == 6 || subCycle == 7)
-        {
-            FloatingBusValue = _ram.Read((ushort)(attrAddr - 0x4000));
-        }
-        else
-        {
-            FloatingBusValue = 0xFF;
-        }
+        int attrOffset = 0x1800 + (third << 8) + (rowInThird << 5) + charX;
+        return _ram.Read((ushort)attrOffset);
     }
 }

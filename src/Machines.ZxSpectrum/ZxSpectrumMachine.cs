@@ -62,11 +62,7 @@ public sealed class ZxSpectrumMachine
         _ports.Out(address, value);
     }
 
-    public void Step()
-    {
-        Cpu.Step();
-        _ula.UpdateFloatingBus(Cpu);
-    }
+    public void Step() => Cpu.Step();
 
     public void RunFrame()
     {
