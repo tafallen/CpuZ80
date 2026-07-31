@@ -56,9 +56,9 @@ public class ZxSpectrumMachineTests
         // Pixel at (32, 24) in the 320x240 buffer is (0,0) in the 256x192 area.
         int activeAreaStart = (24 * 320) + 32;
         
-        // Pixel at (0,0) should be Blue (Bright)
-        // 0xFF0000FF is Bright Blue
-        Assert.Equal(0xFF0000FFu, mockSink.LastFrame[activeAreaStart]);
+        // Pixel at (0,0) should be Blue (Bright).
+        // Pixels are RGBA32 packed as 0xAABBGGRR, so bright blue is 0xFFFF0000.
+        Assert.Equal(0xFFFF0000u, mockSink.LastFrame[activeAreaStart]);
 
         // Pixel at (1,0) should be Paper (Black)
         Assert.Equal(0xFF000000u, mockSink.LastFrame[activeAreaStart + 1]);

@@ -17,6 +17,8 @@ public sealed class SinclairVideo
     public const int BorderWidth = (TotalWidth - ActiveWidth) / 2;
     public const int BorderHeight = (TotalHeight - ActiveHeight) / 2;
 
+    // RGBA32, packed as 0xAABBGGRR — see IVideoSink. Both values are greyscale,
+    // so they read identically in either byte order.
     private const uint Ink   = 0xFF000000u; // black
     private const uint Paper = 0xFFFFFFFFu; // white
 

@@ -17,27 +17,29 @@ public sealed class ZxSpectrumVideo
     public const int BorderWidth = (TotalWidth - ActiveWidth) / 2;  // 32 pixels
     public const int BorderHeight = (TotalHeight - ActiveHeight) / 2; // 24 pixels
 
+    // RGBA32, packed as 0xAABBGGRR — see IVideoSink. Stored in the host's byte
+    // order so a frame needs no per-pixel conversion on its way to a texture.
     private static readonly uint[] PaletteNormal =
     [
         0xFF000000, // 0: Black
-        0xFF0000D7, // 1: Blue
-        0xFFD70000, // 2: Red
+        0xFFD70000, // 1: Blue
+        0xFF0000D7, // 2: Red
         0xFFD700D7, // 3: Magenta
         0xFF00D700, // 4: Green
-        0xFF00D7D7, // 5: Cyan
-        0xFFD7D700, // 6: Yellow
+        0xFFD7D700, // 5: Cyan
+        0xFF00D7D7, // 6: Yellow
         0xFFD7D7D7  // 7: White
     ];
 
     private static readonly uint[] PaletteBright =
     [
         0xFF000000, // 0: Black (Bright black is still black)
-        0xFF0000FF, // 1: Blue
-        0xFFFF0000, // 2: Red
+        0xFFFF0000, // 1: Blue
+        0xFF0000FF, // 2: Red
         0xFFFF00FF, // 3: Magenta
         0xFF00FF00, // 4: Green
-        0xFF00FFFF, // 5: Cyan
-        0xFFFFFF00, // 6: Yellow
+        0xFFFFFF00, // 5: Cyan
+        0xFF00FFFF, // 6: Yellow
         0xFFFFFFFF  // 7: White
     ];
 
@@ -63,14 +65,13 @@ public sealed class ZxSpectrumVideo
 
         int transitionIdx = 0;
         byte currentBorder = borderTransitions.Count > 0 ? borderTransitions[0].Color : finalBorderColor;
-        
-        for (int line = 0; line < TotalHeight; line++)
-        {
-            int frameLine = line + (312 - TotalHeight) / 2;
-            ulong lineStartTState = frameStartTState + (ulong)(frameLine * TStatesPerLine);
-            int rowOffset = line * TotalWidth;
 
-            for (int x = 0; x < TotalWidth; x++)
+        // Paints [from, to) of one scanline, advancing the border-transition
+        // cursor as it goes. Declared as a local function so it stays a struct
+        // closure (no allocation) rather than becoming a delegate.
+        void PaintSpan(int rowOffset, ulong lineStartTState, int from, int to)
+        {
+            for (int x = from; x < to; x++)
             {
                 // Mid-line horizontal border transition sampling
                 ulong pixelTState = lineStartTState + (ulong)((x * TStatesPerLine) / TotalWidth);
@@ -82,6 +83,31 @@ public sealed class ZxSpectrumVideo
                 }
 
                 _pixelBuffer[rowOffset + x] = PaletteNormal[currentBorder & 0x07];
+            }
+        }
+
+        // Only the perimeter is painted. The middle 192 lines have their central
+        // 256 pixels overwritten by the active area below, so painting them here
+        // was 64% of this pass thrown away — and each discarded pixel cost a
+        // 64-bit multiply and divide for its T-state.
+        //
+        // Skipping them cannot lose a border transition: pixelTState still rises
+        // monotonically, so the catch-up loop above drains every transition that
+        // falls in the gap when the right-hand border resumes.
+        for (int line = 0; line < TotalHeight; line++)
+        {
+            int frameLine = line + (312 - TotalHeight) / 2;
+            ulong lineStartTState = frameStartTState + (ulong)(frameLine * TStatesPerLine);
+            int rowOffset = line * TotalWidth;
+
+            if (line < BorderHeight || line >= TotalHeight - BorderHeight)
+            {
+                PaintSpan(rowOffset, lineStartTState, 0, TotalWidth);
+            }
+            else
+            {
+                PaintSpan(rowOffset, lineStartTState, 0, BorderWidth);
+                PaintSpan(rowOffset, lineStartTState, TotalWidth - BorderWidth, TotalWidth);
             }
         }
 

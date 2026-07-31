@@ -4,20 +4,20 @@ using Machines.ZxSpectrum;
 namespace CpuZ80.Benchmarks;
 
 /// <summary>
-/// The pixel hand-off between a machine's ARGB32 frame buffer and the host's
-/// native texture format.
+/// The pixel hand-off between a machine's frame buffer and the host's texture.
 /// </summary>
 /// <remarks>
-/// IMPORTANT: <see cref="ConvertArgbToRgba"/> mirrors the loop in
-/// <c>Adapters.Raylib.RaylibHost.SubmitFrame</c>. It is duplicated here rather
-/// than referenced because Adapters.Raylib needs the native Raylib binary and a
-/// window, which a headless benchmark run cannot open. If that loop changes,
-/// change this one to match, or the benchmark stops meaning anything.
+/// Machines now emit RGBA32 (see <c>IVideoSink</c>), the same layout the texture
+/// wants, so <c>RaylibHost.SubmitFrame</c> pins the incoming span and uploads it
+/// directly — no conversion and no intermediate buffer. <see cref="DirectUpload"/>
+/// stands in for that: a pin plus a checksum read, since a headless run cannot
+/// call into Raylib.
 ///
-/// Tracks review finding:
-///   * PIXEL — every producer uses a compile-time constant palette, so storing
-///             those literals in host byte order turns this loop into a bulk
-///             copy. <see cref="BulkCopy"/> is the target to converge on.
+/// <see cref="ConvertArgbToRgba"/> is the loop that used to run every frame,
+/// kept as the reference point. It is what returning to an ARGB contract would
+/// cost.
+///
+/// Tracks review finding PIXEL.
 /// </remarks>
 public class HostPixelBenchmarks
 {
@@ -37,8 +37,8 @@ public class HostPixelBenchmarks
         for (int i = 0; i < PixelCount; i++) _source[i] = (uint)rnd.Next();
     }
 
-    /// <summary>What the host does today: unpack and repack every pixel.</summary>
-    [Benchmark(Baseline = true, Description = "ARGB32 -> RGBA32 per pixel (current) [PIXEL]")]
+    /// <summary>The former per-pixel unpack/repack. Baseline for comparison only.</summary>
+    [Benchmark(Baseline = true, Description = "ARGB32 -> RGBA32 per pixel (former cost) [PIXEL]")]
     public void ConvertArgbToRgba()
     {
         var src = _source;
@@ -54,7 +54,18 @@ public class HostPixelBenchmarks
         }
     }
 
-    /// <summary>What it costs if palettes are already stored in host byte order.</summary>
-    [Benchmark(Description = "Bulk copy (palettes already host-order) [target]")]
+    /// <summary>A defensive copy, if a host needed its own buffer.</summary>
+    [Benchmark(Description = "Bulk copy")]
     public void BulkCopy() => Array.Copy(_source, _destination, PixelCount);
+
+    /// <summary>What the host does now: pin the machine's buffer and upload it.</summary>
+    [Benchmark(Description = "Direct upload, no copy (current)")]
+    public unsafe uint DirectUpload()
+    {
+        ReadOnlySpan<uint> pixels = _source;
+        fixed (uint* ptr = pixels)
+        {
+            return ptr[0] ^ ptr[PixelCount - 1];
+        }
+    }
 }

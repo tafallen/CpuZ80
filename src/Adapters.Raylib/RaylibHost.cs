@@ -15,7 +15,6 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IAudioSink, IDis
     private int          _width;
     private int          _height;
     private Texture2D    _texture;
-    private uint[]       _rgbaBuffer;
     private bool         _disposed;
 
     // Audio members
@@ -43,7 +42,6 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IAudioSink, IDis
         _texture = Raylib_cs.Raylib.LoadTextureFromImage(img);
         Raylib_cs.Raylib.UnloadImage(img);
 
-        _rgbaBuffer = new uint[width * height];
     }
 
     public bool IsRunning => !Raylib_cs.Raylib.WindowShouldClose();
@@ -88,7 +86,7 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IAudioSink, IDis
 
     public unsafe void SubmitFrame(ReadOnlySpan<uint> pixels, int width, int height)
     {
-        // Resize texture/buffer if resolution changed (e.g. switching machines)
+        // Resize texture if resolution changed (e.g. switching machines)
         if (width != _width || height != _height)
         {
             _width = width;
@@ -97,22 +95,16 @@ public sealed class RaylibHost : IVideoSink, IPhysicalKeyboard, IAudioSink, IDis
             var img = Raylib_cs.Raylib.GenImageColor(width, height, Color.Black);
             _texture = Raylib_cs.Raylib.LoadTextureFromImage(img);
             Raylib_cs.Raylib.UnloadImage(img);
-            _rgbaBuffer = new uint[width * height];
             Raylib_cs.Raylib.SetWindowSize(width * _scale, height * _scale);
         }
 
-        int count = Math.Min(pixels.Length, _rgbaBuffer.Length);
-        for (int i = 0; i < count; i++)
-        {
-            uint argb = pixels[i];
-            uint r = (argb >> 16) & 0xFF;
-            uint g = (argb >>  8) & 0xFF;
-            uint b =  argb        & 0xFF;
-            uint a = (argb >> 24) & 0xFF;
-            _rgbaBuffer[i] = r | (g << 8) | (b << 16) | (a << 24);
-        }
+        if (pixels.Length < width * height)
+            throw new ArgumentException($"Frame is {pixels.Length} pixels, expected at least {width * height}.", nameof(pixels));
 
-        fixed (uint* ptr = _rgbaBuffer)
+        // Machines emit RGBA32 (see IVideoSink), which is exactly what the
+        // texture expects, so the frame uploads straight from the machine's
+        // buffer. This used to unpack and repack all 76,800 pixels every frame.
+        fixed (uint* ptr = pixels)
             Raylib_cs.Raylib.UpdateTexture(_texture, ptr);
 
         Raylib_cs.Raylib.BeginDrawing();

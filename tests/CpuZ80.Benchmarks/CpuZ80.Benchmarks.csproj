@@ -8,6 +8,8 @@
     <!-- AssemblyName must match the project name: BenchmarkDotNet locates the
          project from the assembly to build its generated boilerplate. -->
     <IsPackable>false</IsPackable>
+    <!-- HostPixelBenchmarks pins a span to mirror the host's texture upload. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- Benchmarks must never run under the debugger's JIT or with tiered
          compilation skewing steady-state numbers; BenchmarkDotNet enforces
          Release, but be explicit so a stray Debug run fails loudly. -->

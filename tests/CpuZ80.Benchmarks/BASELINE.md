@@ -12,6 +12,59 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: RGBA palettes and perimeter-only border (review items #5, #7)
+
+Commit: `9d9ba54` + video changes. Tests: 302 passing (+8 video-output tests).
+
+### #5 — host-order palettes
+
+`IVideoSink` now specifies RGBA32 instead of ARGB32. Every producer uses a fixed
+palette, so the literals were simply rewritten in the host's byte order (red and
+blue swap places in the packed uint; black, white, magenta and green are
+unchanged). `RaylibHost.SubmitFrame` no longer converts anything — it pins the
+incoming span and uploads it straight to the texture, and the intermediate
+`_rgbaBuffer` is gone.
+
+| Per 320x240 frame | Time |
+|---|---:|
+| ARGB -> RGBA per pixel (former cost) | 64,661 ns |
+| Bulk copy, if a host needed its own buffer | 3,424 ns |
+| Direct upload, no copy (current) | ~0 ns |
+
+**64.7 us of host work removed per frame** — 3.2 ms/sec at 50 fps. The "direct
+upload" row measures only the pin and a checksum read; the real GPU upload still
+happens inside Raylib and cannot be measured headlessly. The honest claim is
+that the *conversion* is gone, not that display is free.
+
+### #7 — perimeter-only border pass
+
+The border pass painted all 76,800 pixels — each with a 64-bit multiply and
+divide for its T-state — then overwrote 49,152 of them (64%) with the active
+area. It now paints only the perimeter.
+
+In-process A/B, two builds of `Machines.ZxSpectrum` differing only in
+`ZxSpectrumVideo`, best-of-9 interleaved:
+
+| | ms/frame |
+|---|---:|
+| Full-buffer border (before) | 0.210 |
+| Perimeter only (after) | **0.166** |
+| | **1.27x, 21.0% of RenderFrame removed** |
+
+Skipping the middle cannot drop a border transition: `pixelTState` still rises
+monotonically, so the catch-up loop drains everything in the gap when the
+right-hand border resumes. A test covers a mid-frame border change reaching the
+bottom band.
+
+### Note for the sibling repo
+
+`Machines.Common` is copied rather than shared (see the adapter strategy in the
+docs). The `IVideoSink` contract change diverges this copy from the Cpu6502 one
+— that repo's producers still emit ARGB32 and its `RaylibHost` still converts.
+Port both together, or the colours come out with red and blue swapped.
+
+---
+
 ## After: lazy floating bus (review item #4)
 
 Commit: `2fc6564` + lazy floating bus. Tests: 294 passing (+14 floating-bus tests).
