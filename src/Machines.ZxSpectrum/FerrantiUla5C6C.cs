@@ -17,11 +17,6 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private const byte Speaker_Bit  = 0x10;
     private const byte EAR_Bit      = 0x40;
 
-    private const int CyclesPerLine = 224;
-    private const int VisibleStartLine = 64;
-    private const int VisibleEndLine = 255;
-    private const int VisibleTStatesStart = VisibleStartLine * CyclesPerLine;
-    private const int VisibleTStatesEnd = (VisibleEndLine + 1) * CyclesPerLine;
     private const byte OpenBus = 0xFF;
     private static readonly byte[] ContentionTable = [ 6, 5, 4, 3, 2, 1, 0, 0 ];
 
@@ -64,8 +59,12 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
 
     private ulong _frameStartCycles;
 
-    public FerrantiUla5C6C(Ram ram, SinclairKeyboardAdapter? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null)
+    /// <summary>Frame geometry this ULA is running to. Defaults to the 48K.</summary>
+    public UlaTiming Timing { get; }
+
+    public FerrantiUla5C6C(Ram ram, SinclairKeyboardAdapter? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null, UlaTiming? timing = null)
     {
+        Timing     = timing ?? UlaTiming.Spectrum48;
         _ram       = ram;
         _video     = new ZxSpectrumVideo(ram);
         _beeper    = new BeeperDevice();
@@ -166,9 +165,9 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private void ApplyContention(Cpu cpu)
     {
         int t = (int)(cpu.TotalCycles - _frameStartCycles);
-        if (t >= VisibleTStatesStart && t < VisibleTStatesEnd)
+        if (t >= Timing.ContentionStart && t < Timing.ContentionEnd)
         {
-            int lineCycle = t % CyclesPerLine;
+            int lineCycle = (t - Timing.ContentionStart) % Timing.CyclesPerLine;
             if (lineCycle < 128)
             {
                 cpu.WaitCycles += ContentionTable[lineCycle % 8];
@@ -185,10 +184,10 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
         int t = (int)(totalCycles - _frameStartCycles);
 
         // Borders and vertical blanking: the ULA is not fetching.
-        if (t < VisibleTStatesStart || t >= VisibleTStatesEnd) return OpenBus;
+        if (t < Timing.ContentionStart || t >= Timing.ContentionEnd) return OpenBus;
 
         // Only the first 128 T-states of each line are drawn.
-        int lineCycle = t % CyclesPerLine;
+        int lineCycle = (t - Timing.ContentionStart) % Timing.CyclesPerLine;
         if (lineCycle >= 128) return OpenBus;
 
         // The ULA fetches two bytes every 8 T-states:
@@ -199,7 +198,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
         if (subCycle != 2 && subCycle != 3 && subCycle != 6 && subCycle != 7) return OpenBus;
 
         int charX      = lineCycle / 4;                              // 0..31
-        int charRow    = (t - VisibleTStatesStart) / CyclesPerLine / 8;
+        int charRow    = (t - Timing.ContentionStart) / Timing.CyclesPerLine / 8;
         int third      = charRow / 8;
         int rowInThird = charRow & 7;
 

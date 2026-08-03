@@ -318,6 +318,53 @@ Implement the most popular Spectrum joystick standard. The Kempston interface re
 
 ---
 
+### Epic 4.5 — ZX Spectrum 128K / +2 (grey)
+
+Research and architecture: [zx-spectrum-128.md](./zx-spectrum-128.md). Facts were
+checked against the Sinclair Wiki and the 128 service manual rather than inferred
+from the 48K — the 128 changes clock, frame length, line length and contention
+start as well as adding paging.
+
+Numbered US-45x to sit between Epic 4 (Spectrum 48K) and Epic 5 (CPC), which
+already owns US-50x.
+
+- [x] **US-451 — Extract `UlaTiming`**
+  Frame geometry as data so the 128 (228 T-states/line, 70,908/frame, contention
+  from 14,361) can share `FerrantiUla5C6C`. 48K values are the default, so no
+  behaviour change; the contention pattern re-anchors to `ContentionStart`, which
+  is arithmetically identical on the 48K because 14,336 is a multiple of 224.
+
+- [x] **US-452 — `Zx128MemoryPager`**
+  Port 0x7FFD: bank select, ROM select, screen select, and the one-way paging
+  lock. Partial decoding on A15 = 0 and A1 = 0. Drives `AddressDecoder.Remap`,
+  and exposes `IsContended` because contention at 0xC000 now depends on which
+  bank is paged there.
+
+- [ ] **US-453 — `Zx128Machine` composition**
+  Eight `Ram(0x4000)` banks, two ROMs from a 32K image, 128K timing, `RunFrame`
+  at 70,908 T-states. Boots to the 128 editor ROM.
+
+- [ ] **US-454 — Paging-aware contention**
+  `FerrantiUla5C6C.ApplyContention` currently tests the address alone. It needs an
+  injectable rule so the 128 can contend 0xC000-0xFFFF for odd banks. The 48K
+  default must stay exactly the current address test — the existing contention
+  tests are the guard.
+
+- [ ] **US-455 — Shadow screen**
+  `ZxSpectrumVideo` renders from a fixed `Ram`. It must follow the pager's
+  `ScreenBank` (5 or 7), which is independent of what the CPU has paged at
+  0xC000. `ComputeFloatingBus` needs the same treatment.
+
+- [ ] **US-456 — AY-3-8912**
+  Ports 0xFFFD (register select / read) and 0xBFFD (data write). Three square
+  channels, noise, envelope. Mix with the existing beeper into `IAudioSink`.
+  Register read-back is not a plain mirror — unused bits read as 0.
+
+- [ ] **US-457 — `Host.ZxSpectrum128` runner**
+  Command-line host mirroring `Host.ZxSpectrum`, taking a 32K ROM image.
+
+---
+
 ### Epic 5 — Amstrad CPC 464 / 6128
 
 The Amstrad CPC series features a 4MHz Z80A, the Amstrad Gate Array, a 6845 CRTC for video, and an AY-3-8912 for 3-channel sound. This epic focuses on the CPC 464 (64K) base model with 6128 (128K) expandability.
