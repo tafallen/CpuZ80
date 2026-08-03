@@ -5,8 +5,19 @@ namespace Machines.Sinclair.Common;
 /// <summary>
 /// Emulates the ZX Spectrum's single-bit beeper with high-fidelity anti-aliased resampling.
 /// Captures speaker bit transitions and averages intensity over sample periods.
-/// Thread-safe for concurrent emulation and rendering.
 /// </summary>
+/// <remarks>
+/// Transitions are collected during a frame and replayed by <see cref="Render"/>
+/// against that same frame's T-state window. The two must describe the same
+/// frame: this previously double-buffered the list and rendered the PREVIOUS
+/// frame's transitions against the CURRENT frame's window, so every transition
+/// fell before the window start, collapsed into the first sample, and a square
+/// wave came out as a DC level with one glitch per frame.
+///
+/// Single-threaded by design — the host loop runs emulation and rendering on one
+/// thread, so there are no locks. Threading this would buy under 1% of the frame
+/// budget; see the performance review.
+/// </remarks>
 public sealed class BeeperDevice
 {
     private const int SampleRate = 44100;
@@ -16,11 +27,10 @@ public sealed class BeeperDevice
     private const long Scale = 1L << 32;
     private const long TStatesPerAudioSampleScaled = (CPU_Clock * Scale) / SampleRate;
 
-    private List<(ulong TState, int Level)> _activeTransitions = new(512);
-    private List<(ulong TState, int Level)> _renderTransitions = new(512);
-    private readonly object _lock = new();
+    private readonly List<(ulong TState, int Level)> _transitions = new(512);
 
     private int _currentLevel;
+    private int _levelAtFrameStart;
     private ulong _frameStartTState;
 
     // Pre-allocated sample buffer
@@ -28,34 +38,22 @@ public sealed class BeeperDevice
 
     private const short VolumeUnit = 1600;
 
-    /// <summary>
-    /// Notifies the beeper that the speaker bit has changed.
-    /// Called by the emulation thread.
-    /// </summary>
+    /// <summary>Notifies the beeper that the speaker bit has changed.</summary>
     public void SetLevel(ulong tstate, int level)
     {
-        lock (_lock)
-        {
-            if (level == _currentLevel) return;
-            _currentLevel = level;
-            _activeTransitions.Add((tstate, level));
-        }
+        if (level == _currentLevel) return;
+        _currentLevel = level;
+        _transitions.Add((tstate, level));
     }
 
     /// <summary>
-    /// Snapshots transitions for the current frame.
-    /// Called by the emulation thread at the end of a frame.
+    /// Starts a new frame: discards the previous frame's transitions and records
+    /// the level carried into this one, which is where <see cref="Render"/> begins.
     /// </summary>
-    public void CommitTransitions()
+    public void BeginFrame()
     {
-        lock (_lock)
-        {
-            // Swap lists
-            var temp = _renderTransitions;
-            _renderTransitions = _activeTransitions;
-            _activeTransitions = temp;
-            _activeTransitions.Clear();
-        }
+        _levelAtFrameStart = _currentLevel;
+        _transitions.Clear();
     }
 
     /// <summary>
@@ -76,11 +74,9 @@ public sealed class BeeperDevice
         }
 
         int transitionIdx = 0;
-        int currentLevel = _currentLevel; 
-        
-        // Note: In a fully correct double-buffered model, we'd need to know the
-        // starting level of the snapshotted frame. For now, we assume _currentLevel
-        // is stable enough.
+        // Start from the level the frame opened at, not the live level: by the
+        // time Render runs, _currentLevel is whatever the frame ended on.
+        int currentLevel = _levelAtFrameStart;
 
         long frameStartScaled = (long)_frameStartTState * Scale;
 
@@ -92,16 +88,16 @@ public sealed class BeeperDevice
             long totalEnergyScaled = 0;
             long cursorScaled = windowStartScaled;
 
-            while (transitionIdx < _renderTransitions.Count && (long)_renderTransitions[transitionIdx].TState * Scale < windowEndScaled)
+            while (transitionIdx < _transitions.Count && (long)_transitions[transitionIdx].TState * Scale < windowEndScaled)
             {
-                long transitionTimeScaled = (long)_renderTransitions[transitionIdx].TState * Scale;
+                long transitionTimeScaled = (long)_transitions[transitionIdx].TState * Scale;
                 
                 if (transitionTimeScaled > cursorScaled)
                 {
                     totalEnergyScaled += (long)currentLevel * (transitionTimeScaled - cursorScaled);
                 }
 
-                currentLevel = _renderTransitions[transitionIdx].Level;
+                currentLevel = _transitions[transitionIdx].Level;
                 cursorScaled = transitionTimeScaled;
                 transitionIdx++;
             }
@@ -121,12 +117,9 @@ public sealed class BeeperDevice
 
     public void Reset(ulong tstate)
     {
-        lock (_lock)
-        {
-            _frameStartTState = tstate;
-            _activeTransitions.Clear();
-            _renderTransitions.Clear();
-            _currentLevel = 0;
-        }
+        _frameStartTState = tstate;
+        _transitions.Clear();
+        _currentLevel = 0;
+        _levelAtFrameStart = 0;
     }
 }

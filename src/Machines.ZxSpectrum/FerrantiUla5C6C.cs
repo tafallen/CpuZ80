@@ -33,9 +33,17 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private readonly Ram                      _ram;
     private Cpu? _cpu;
 
-    private readonly object _lock = new();
-    private List<(ulong TState, byte Color)> _activeBorder = new(256);
-    private List<(ulong TState, byte Color)> _renderBorder = new(256);
+    // Border changes recorded during the frame currently executing. Rendered at
+    // the end of that same frame, against that frame's T-state window.
+    //
+    // This used to be double-buffered and swapped at frame start, which meant
+    // RenderFrame replayed the PREVIOUS frame's transitions against the CURRENT
+    // frame's window. Every transition then fell before the window and collapsed
+    // into the first pixel, so mid-frame border effects rendered as a flat colour.
+    //
+    // No lock: the host loop runs emulation and rendering on one thread. See the
+    // performance review for why threading the renderer is not worth it.
+    private readonly List<(ulong TState, byte Color)> _borderTransitions = new(256);
 
     public byte BorderColor { get; private set; }
 
@@ -70,35 +78,24 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
 
     public void Reset()
     {
-        lock (_lock)
-        {
-            _beeper.Reset(0);
-            BorderColor = 0;
-            _activeBorder.Clear();
-            _renderBorder.Clear();
-            _frameStartCycles = 0;
-        }
+        _beeper.Reset(0);
+        BorderColor = 0;
+        _borderTransitions.Clear();
+        _frameStartCycles = 0;
     }
 
     public void OnFrameStart(ulong tstate)
     {
-        lock (_lock)
-        {
-            _frameStartCycles = tstate;
-            var temp = _renderBorder;
-            _renderBorder = _activeBorder;
-            _activeBorder = temp;
-            _activeBorder.Clear();
-            _beeper.CommitTransitions();
-        }
-
+        _frameStartCycles = tstate;
+        _borderTransitions.Clear();
+        _beeper.BeginFrame();
         _keyboard?.Invalidate();
     }
 
     public void RenderFrame(IVideoSink sink, ulong endTState)
     {
         // Flash toggles are handled internally or by counter
-        _video.Render(sink, _renderBorder, BorderColor, false, _frameStartCycles);
+        _video.Render(sink, _borderTransitions, BorderColor, false, _frameStartCycles);
 
         if (_audioSink is not null)
         {
@@ -132,7 +129,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
                 BorderColor = newColor;
                 if (_cpu is not null)
                 {
-                    lock (_lock) _activeBorder.Add((_cpu.TotalCycles, newColor));
+                    _borderTransitions.Add((_cpu.TotalCycles, newColor));
                 }
             }
 

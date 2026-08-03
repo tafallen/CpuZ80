@@ -12,6 +12,56 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: frame sequencing fixed, locks removed (review item #8)
+
+Commit: `3fe5b39` + sequencing fix. Tests: 309 passing (+4).
+
+Item #8 was written up as "drop the locks or thread the renderer". Investigating
+it found the double-buffering they guard was producing wrong output, so the item
+became a correctness fix.
+
+### The bug
+
+`OnFrameStart` swapped the border and beeper transition lists at the *start* of
+`RunFrame`, so `RenderFrame` replayed the **previous** frame's transitions
+against the **current** frame's T-state window. Every transition therefore fell
+before the window start and collapsed into the first sample or pixel.
+
+| | Before | After |
+|---|---|---|
+| Striped border (tight `OUT` loop) | 1 flat colour per frame | 2 colours, correct diagonal stripes |
+| Square-wave beeper | 1 edge per 880 samples — DC with a 50 Hz tick | 10 distinct levels, proper square wave |
+
+Neither had a test that could catch it. The old border test asserted only that
+*one of* two colours appeared somewhere; the old beeper test wrote the port
+before `RunFrame` and relied on the transitions surviving into the next frame —
+it was asserting the bug.
+
+### The fix
+
+Both devices now keep a single transition list, cleared at frame start and
+rendered at the end of that same frame. `BeeperDevice.Render` also starts from
+the level the frame *opened* at rather than the live `_currentLevel`, which by
+render time is whatever the frame ended on.
+
+Locks removed from `BeeperDevice` and `FerrantiUla5C6C`: the host loop runs
+emulation and rendering on one thread.
+
+### Threading was measured and rejected
+
+`RunFrame` ~185 us, `RenderFrame` ~166 us, budget 20,000 us — about 1.8% used.
+Perfect overlap would save at most ~166 us, under 1% of the budget, in exchange
+for a screen-RAM snapshot to prevent tearing, a handoff buffer, and the end of
+the zero-allocation property. Raylib's GL calls must also stay on the
+context-owning thread, so the upload and draw could not move anyway.
+
+Revisit only if render cost approaches the budget (scaling filters, shaders, a
+higher-resolution machine) or if the CPU needs to run ahead for rewind/netplay.
+
+Allocations per frame remain 0.
+
+---
+
 ## After: keyboard matrix cached per frame (review item #6)
 
 Commit: `5f2192f` + keyboard cache. Tests: 305 passing (+3 keyboard tests).

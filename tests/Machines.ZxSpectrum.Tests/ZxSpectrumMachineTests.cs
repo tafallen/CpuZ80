@@ -114,27 +114,37 @@ public class ZxSpectrumMachineTests
     [Fact]
     public void RenderFrame_TogglesSpeaker_ProducesSamples()
     {
+        // The speaker must be toggled by code running *inside* the frame being
+        // rendered. An earlier version of this test wrote the port before
+        // RunFrame and relied on the transitions surviving into the next frame —
+        // which only worked because the transition list was double-buffered and
+        // rendered a frame late. See FrameSequencingTests.
         var mockAudio = new MockAudioSink();
         var machine = new ZxSpectrumMachine(_stubRom, audio: mockAudio);
         machine.Reset();
 
-        // 1. Set speaker HIGH
-        machine.WritePort(0xFE, 0x10); 
-        machine.Cpu.TotalCycles += 1000;
+        byte[] toggleSpeaker =
+        [
+            0x3E, 0x10,       // LD A,0x10   (speaker high)
+            0xD3, 0xFE,       // OUT (0xFE),A
+            0x06, 0x40,       // LD B,0x40
+            0x10, 0xFE,       // DJNZ $      (hold)
+            0x3E, 0x00,       // LD A,0x00   (speaker low)
+            0xD3, 0xFE,       // OUT (0xFE),A
+            0x06, 0x40,       // LD B,0x40
+            0x10, 0xFE,       // DJNZ $      (hold)
+            0xC3, 0x00, 0x80, // JP 0x8000
+        ];
+        for (int i = 0; i < toggleSpeaker.Length; i++)
+            machine.Ram.Write((ushort)(0x8000 - 0x4000 + i), toggleSpeaker[i]);
+        machine.Cpu.PC = 0x8000;
 
-        // 2. Set speaker LOW
-        machine.WritePort(0xFE, 0x00);
-        machine.Cpu.TotalCycles += 1000;
-
-        // 3. Move to next frame to commit these transitions
         machine.RunFrame();
-
-        // 4. Render
         machine.RenderFrame(new MockVideoSink());
 
         Assert.NotNull(mockAudio.LastSamples);
         Assert.True(mockAudio.LastSamples.Length > 0);
-        
+
         // At least some samples should be non-zero
         Assert.Contains(mockAudio.LastSamples, s => s > 0);
     }
