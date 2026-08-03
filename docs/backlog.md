@@ -484,3 +484,60 @@ dotnet run -c Release --project tests/CpuZ80.Benchmarks -- --filter '*MachineBen
 Record the result in `tests/CpuZ80.Benchmarks/BASELINE.md`, replacing the entry
 currently marked "NOT USABLE". Sanity check: StdDev should be a low single-digit
 percentage of the mean, and `ZX80 RenderFrame` should sit near 1.9 µs.
+
+### FU-003 — Stop `RaylibHost` allocating on the audio path
+
+**Status:** parked — small, and in the adapter rather than the core.
+
+The emulator core is allocation-free in steady state (0 bytes/frame, guarded by
+`MemoryDiagnoser` and the benchmark `metrics` mode). The Raylib adapter is not.
+`RaylibHost.UpdateAudio` does `short[] samples = new short[count]`
+([RaylibHost.cs:65](../src/Adapters.Raylib/RaylibHost.cs)) on every iteration of
+the drain loop — up to 2 KB a time, several times a frame — and then fills it by
+dequeuing one element at a time from a `Queue<short>`. `SubmitSamples` likewise
+enqueues one element at a time.
+
+**Consequence while parked:** the only per-frame garbage in the running
+emulator comes from the host adapter, so the core's zero-allocation property
+does not survive to the actual application. It is gen0 churn rather than a leak,
+so the practical effect is minor.
+
+**To close:** hold a reusable `short[1024]` field instead of allocating per
+iteration, and replace `Queue<short>` with a ring buffer so both directions can
+bulk-copy spans rather than moving one sample at a time.
+
+**Note on verification:** `RaylibHost` calls `InitWindow` and `InitAudioDevice`,
+so it cannot be exercised headlessly — this change cannot be covered by the test
+suite and needs a manual run with audio.
+
+### FU-004 — Wait states from an instruction's final memory access are deferred
+
+**Status:** parked — aggregate timing is correct; only per-instruction
+attribution is affected. Pinned by a test so the behaviour cannot drift silently.
+
+The code generator emits each M-cycle as `Tick(n)` *followed by* that cycle's
+body, so a memory access is followed by the *next* cycle's `Tick`, which consumes
+any wait state the host injected. When the access is the instruction's last
+action there is no following `Tick`, and the wait state carries into the next
+instruction.
+
+`LD (HL),n` is the clearest case — generated as
+`Tick(4); Tick(3); Fetch(); Tick(3); Write()`. With one wait state injected per
+access it costs 12 T-states instead of 13, and leaves `WaitCycles == 1` pending.
+Nothing is lost: the carry is paid by the following instruction. Covered by
+`WaitStateTests.WaitCycles_FromFinalAccess_AreDeferredToTheNextInstruction`,
+which asserts both the shortfall and that the next instruction pays it.
+
+**Consequence while parked:** on the ZX Spectrum, contention for an instruction
+ending in a memory write is attributed one instruction late. Totals over a frame
+are right, so this does not affect throughput or the contention figures in
+`BASELINE.md`; it would matter for cycle-exact raster effects that depend on
+where within an instruction the stall lands.
+
+**To close:** change the interleaving in
+[CpuZ80.CodeGen/Program.cs](../src/CpuZ80.CodeGen/Program.cs) so each memory
+access is followed by its own M-cycle `Tick`, or add an explicit wait-drain after
+the final body fragment. Do **not** hand-edit `Cpu.Generated.cs`. Any change here
+moves T-state accounting across the whole instruction set, so all 309 tests —
+many of which assert exact `TotalCycles` — plus ZEXALL must pass afterwards, and
+`ContentionTests` should be re-checked closely.
