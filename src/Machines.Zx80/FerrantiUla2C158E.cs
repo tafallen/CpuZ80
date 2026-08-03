@@ -32,6 +32,7 @@ public sealed class FerrantiUla2C158E : IPortBus, ICpuHost
     public void OnFrameStart(ulong tstate)
     {
         _beeper.CommitTransitions();
+        _keyboard?.Invalidate();
     }
 
     public void RenderFrame(IVideoSink sink, ulong endTState)

@@ -188,9 +188,12 @@ public static class Metrics
         keyboard.Queries = 0;
         machine.RunFrame();
 
-        Console.WriteLine($"  Host key queries per frame (tight IN 0xFE loop) : {keyboard.Queries}");
-        Console.WriteLine( "    Each is a native P/Invoke under Adapters.Raylib.");
-        Console.WriteLine( "    Target after snapshotting key state once per frame: <= 40.");
+        string verdict = keyboard.Queries <= 40
+            ? "ok — one full 8x5 scan, independent of how hard the guest polls"
+            : $"REGRESSION — expected <= 40, the cache is not holding";
+        Console.WriteLine($"  Host key queries per frame (tight IN 0xFE loop) : {keyboard.Queries}  -> {verdict}");
+        Console.WriteLine( "    Each is a native P/Invoke under Adapters.Raylib. Was 15,355 before the");
+        Console.WriteLine( "    matrix was cached per frame.");
     }
 
     /// <summary>Steady-state allocation. Currently zero — keep it that way.</summary>

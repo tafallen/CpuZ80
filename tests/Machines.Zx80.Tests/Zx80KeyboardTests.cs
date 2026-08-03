@@ -140,4 +140,61 @@ public class Zx80KeyboardTests
         var machine = new Zx80Machine(NopRom());
         Assert.Equal(0xFF, ReadRow(machine, 0xFE));
     }
+
+    /// <summary>Counts how many times the host is asked for key state.</summary>
+    private sealed class CountingKeyboard : IPhysicalKeyboard
+    {
+        public int Queries;
+        public bool IsKeyDown(PhysicalKey key) { Queries++; return false; }
+    }
+
+    // The matrix is 8 rows x 5 keys, so one full scan is 40 host queries.
+    private const int QueriesPerScan = 40;
+
+    [Fact]
+    public void Keyboard_ManyReadsInOneFrame_ScanTheHostOnlyOnce()
+    {
+        // Under the real Raylib adapter each host query is a native P/Invoke, so
+        // a game polling the keyboard in a tight IN loop must not scale the
+        // number of them with the number of reads.
+        var kb = new CountingKeyboard();
+        var machine = new Zx80Machine(NopRom(), keyboard: kb);
+
+        for (int i = 0; i < 500; i++) ReadRow(machine, 0xFE);
+
+        Assert.Equal(QueriesPerScan, kb.Queries);
+    }
+
+    [Fact]
+    public void Keyboard_IsRescannedOncePerFrame()
+    {
+        var kb = new CountingKeyboard();
+        var machine = new Zx80Machine(NopRom(), keyboard: kb);
+
+        ReadRow(machine, 0xFE);
+        Assert.Equal(QueriesPerScan, kb.Queries);
+
+        // A new frame must pick up whatever the host now reports.
+        machine.RunFrame();
+        ReadRow(machine, 0xFE);
+        Assert.Equal(QueriesPerScan * 2, kb.Queries);
+
+        // Still only one scan for the rest of this frame.
+        for (int i = 0; i < 100; i++) ReadRow(machine, 0xFD);
+        Assert.Equal(QueriesPerScan * 2, kb.Queries);
+    }
+
+    [Fact]
+    public void Keyboard_KeyPressedBetweenFrames_IsSeenAfterTheFrameBoundary()
+    {
+        var kb = new StubKeyboard();
+        var machine = new Zx80Machine(NopRom(), keyboard: kb);
+
+        Assert.Equal(0xFF, ReadRow(machine, 0xFE)); // nothing down yet
+
+        kb.Press(PhysicalKey.Z); // A8 row, bit 1
+        machine.RunFrame();
+
+        Assert.Equal(0, ReadRow(machine, 0xFE) & 0b00000010);
+    }
 }

@@ -91,6 +91,8 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
             _activeBorder.Clear();
             _beeper.CommitTransitions();
         }
+
+        _keyboard?.Invalidate();
     }
 
     public void RenderFrame(IVideoSink sink, ulong endTState)

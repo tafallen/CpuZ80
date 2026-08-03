@@ -12,6 +12,36 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: keyboard matrix cached per frame (review item #6)
+
+Commit: `5f2192f` + keyboard cache. Tests: 305 passing (+3 keyboard tests).
+
+`SinclairKeyboardAdapter` queried the host once per key per port read. A program
+polling the keyboard in a tight `IN 0xFE` loop drove that without bound, and
+under the Raylib adapter every query is a native P/Invoke. The matrix is now
+scanned at most once per frame and cached.
+
+| Metric | Before | After |
+|---|---:|---:|
+| Host key queries per frame (tight poll loop) | **15,355** | **40** |
+
+A 384x reduction, and — more importantly — now a *fixed* cost: one 8x5 scan per
+frame regardless of how hard the guest polls. This was the last unbounded path
+in the emulator.
+
+The scan is deferred to the first read after `Invalidate()` rather than done
+eagerly at frame start, so a machine driven by direct `ReadPort` calls without
+running frames still sees current key state. Each ULA calls `Invalidate()` from
+`OnFrameStart`.
+
+**Not measured:** the wall-clock win is the elimination of ~15,300 native
+P/Invokes per frame, which a headless benchmark cannot capture — the stub
+keyboard used in tests is a cheap managed call. `PeripheralBenchmarks` ran at
+243 us +/- 28 us, too noisy to compare across runs. The query count is the
+honest result; treat the timing as unmeasured.
+
+---
+
 ## After: RGBA palettes and perimeter-only border (review items #5, #7)
 
 Commit: `9d9ba54` + video changes. Tests: 302 passing (+8 video-output tests).

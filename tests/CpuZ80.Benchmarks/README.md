@@ -41,8 +41,9 @@ reliable way to confirm a structural fix actually landed:
 
 | Metric | Meaning | Baseline | Target |
 |---|---|---|---|
-| Hook coverage | Bus accesses that reach `ICpuHost.OnMemoryAccess` | LDIR misses **49.9%**, stack misses **11.4%** | 0% missed |
-| Host key queries/frame | Native P/Invokes under a tight `IN 0xFE` loop | **15,355** | ≤ 40 |
+| Hook coverage | Bus accesses that reach `ICpuHost.OnMemoryAccess` | 0% missed | stays 0% |
+| Contention throughput | Emulated slowdown for code in contended RAM | 12.5% LDIR, 18.4% CALL/RET | stays > 0% |
+| Host key queries/frame | Native P/Invokes under a tight `IN 0xFE` loop | **40** (was 15,355) | ≤ 40 |
 | Allocations per frame | Steady-state garbage | **0 bytes** | stays 0 |
 
 ## What each benchmark tracks
