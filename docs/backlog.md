@@ -13,6 +13,8 @@ each repo rather than shared via cross-repo project references. The intent is to
 extract `Machines.Common` and the adapters into a third shared repo; until that exists, keep
 copies in sync manually. Do not add cross-repo project references.
 
+> ⚠️ **The copies are currently out of sync** — see [FU-001](#fu-001--port-the-rgba32-ivideosink-contract-to-cpu6502).
+
 ---
 
 ## Z80 CPU — Remaining Work
@@ -424,3 +426,61 @@ Implement the CPC's built-in joystick interface. Unlike the Kempston, the Amstra
 - Snapshot save/load (SNA / Z80 file formats for Spectrum)
 - Cycle-accurate timing tied to a host clock source
 - Debugger hooks (breakpoints, single-step, register watch)
+
+---
+
+## Deferred Follow-Ups
+
+Known, deliberately parked. Each says what is wrong, why it is parked, and what
+it would take to close.
+
+### FU-001 — Port the RGBA32 `IVideoSink` contract to Cpu6502
+
+**Status:** parked — `Cpu6502` is actively owned by someone else, so this repo
+should not push changes into it unannounced.
+
+`IVideoSink` here now specifies **RGBA32** (packed `0xAABBGGRR`; bytes in memory
+R, G, B, A) instead of ARGB32. Producers' palettes were rewritten in that order
+and `RaylibHost.SubmitFrame` now pins the frame and uploads it straight to the
+texture, with no per-pixel conversion and no intermediate buffer. See commit
+`5f2192f`.
+
+`Cpu6502` still has the ARGB32 copy of `Machines.Common` and a `RaylibHost` that
+converts per pixel.
+
+**Consequence while parked:** the two copies of `Machines.Common` disagree about
+what a frame buffer means. Moving a machine or adapter between the repos, in
+either direction, produces a picture with **red and blue swapped** — and no test
+in either repo would catch it, because each is internally consistent.
+
+**To close:** in `Cpu6502`, swap R and B in every palette literal, update the
+`IVideoSink` doc comment, replace the conversion loop in `RaylibHost.SubmitFrame`
+with a direct upload, and update any test asserting pixel values. Greyscale and
+magenta/green literals are unchanged by the swap; blue↔red and cyan↔yellow move.
+Worth doing at the same time as the eventual shared-repo extraction.
+
+### FU-002 — Re-measure `RenderFrame` on a quiet machine
+
+**Status:** parked — needs a machine without background load, not a code change.
+
+`Spectrum RenderFrame` has measured 222 µs, 290 µs and 370 µs across three
+benchmark runs *with no code touching that path between them*. The runs were
+taken on a loaded machine: StdDev reached 23% of the mean and BenchmarkDotNet
+reported RatioSD up to 0.34. One earlier single-shot run even had
+`AddressDecoder` beating a raw `byte[]`, which is structurally impossible.
+
+**Consequence while parked:** we do not actually know what the video path costs.
+The gains recorded for the perimeter-only border pass (1.27×) and the removal of
+the pixel conversion (64.7 µs/frame) come from interleaved in-process A/B runs
+and are sound, but the *absolute* `RenderFrame` figure in `BASELINE.md` is not
+trustworthy, and no trend should be read from it.
+
+**To close:** close other applications, then
+
+```bash
+dotnet run -c Release --project tests/CpuZ80.Benchmarks -- --filter '*MachineBenchmarks*'
+```
+
+Record the result in `tests/CpuZ80.Benchmarks/BASELINE.md`, replacing the entry
+currently marked "NOT USABLE". Sanity check: StdDev should be a low single-digit
+percentage of the mean, and `ZX80 RenderFrame` should sit near 1.9 µs.
