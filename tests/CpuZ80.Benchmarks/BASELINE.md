@@ -12,6 +12,52 @@ Environment: .NET 8.0.419, Windows 11, 16 cores, ServerGC off.
 
 ---
 
+## After: two-level AddressDecoder (bank-switching prerequisite)
+
+Commit: `973d1cb` + decoder rework. Tests: 318 passing (+9 banking tests).
+
+Groundwork for machines that page memory at runtime (Spectrum 128K, Amstrad CPC,
+MSX). The decoder was a flat 65,536-entry table, so changing what a range maps to
+was O(addresses): swapping a 16K window rewrote 16,384 entries. It is now a
+256-entry page table over 256-byte pages, with a per-address table allocated only
+when something genuinely needs byte granularity — which no machine in this repo
+does, since they all map on page boundaries.
+
+`Remap(from, to, device)` is the bank-switching entry point: it replaces rather
+than merging under the conflict policy, so paging the same window repeatedly
+cannot accumulate devices.
+
+### Bank switching — the point of the change
+
+In-process A/B against the previous decoder built from git as a separate
+assembly, best-of-7:
+
+| | per 16K switch |
+|---|---:|
+| Old: flat table, `Map()` | **~86,000–96,000 ns** |
+| New: page table, `Remap()` | **~170–380 ns** |
+| | **250–485x faster** |
+
+Put in context: a machine paging 50 times a frame at 50 fps would have spent
+**~210–240 ms per second** — over a fifth of all wall-clock time — just rewriting
+routing entries. It is now under 1 ms/s.
+
+### Execution throughput — unchanged
+
+Four interleaved A/B runs gave ratios of 0.94, 0.96, 0.97 and 1.18 (the new
+decoder faster in one). There is no reliable difference at this machine's noise
+level, and no claim of a few percent either way is supportable — see FU-002.
+
+### Memory
+
+Routing metadata drops from **1 MiB to 4 KiB** per decoder for every current
+machine, since none needs the fine-grained table. The review flagged 2 MiB of
+L2/L3 pressure across the address and port decoders; this removes the address
+half. `PortDecoder` still uses the flat design and could get the same treatment
+if it ever matters.
+
+---
+
 ## After: frame sequencing fixed, locks removed (review item #8)
 
 Commit: `3fe5b39` + sequencing fix. Tests: 309 passing (+4).
