@@ -15,3 +15,10 @@ TestResults/
 
 # BenchmarkDotNet run artifacts (results are recorded in BASELINE.md instead)
 BenchmarkDotNet.Artifacts/
+
+# ROM images are copyrighted — keep them out of the repo (see docs/backlog.md)
+*.rom
+*.z80
+*.sna
+*.tap
+*.tzx
