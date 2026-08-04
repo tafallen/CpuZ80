@@ -33,10 +33,11 @@ internal sealed class Zx128PortBus : IPortBus
         // Memory paging latch: A15 and A1 low.
         _decoder.MapMirror(0x0000, PagerDecodeMask, 0xFFFF, pager);
 
-        // AY-3-8912: both ports have A15 high, A14 selects register vs data.
-        // 0xFFFD (select/read) and 0xBFFD (data write).
-        _decoder.MapMirror(0xC000, 0xC000, 0xFFFF, ay);
-        _decoder.MapMirror(0x8000, 0xC000, 0xFFFF, ay);
+        // AY-3-8912: A1 low, then A14 selects register (0xFFFD) vs data (0xBFFD).
+        // A1 matters: without it the chip also answers 0xFFFE, the port a
+        // program uses to scan every keyboard row at once.
+        _decoder.MapMirror(0xC000, 0xC002, 0xFFFF, ay);
+        _decoder.MapMirror(0x8000, 0xC002, 0xFFFF, ay);
 
         if (joystick is not null)
         {

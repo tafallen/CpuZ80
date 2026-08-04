@@ -23,8 +23,9 @@ namespace Machines.ZxSpectrum128;
 /// </code>
 ///
 /// Ports on the 128: write 0xFFFD selects a register and reading it reads that
-/// register back; writing 0xBFFD sets it. Both have A15 high; A14 picks between
-/// them — select is A15=1 A14=1 (0xFFFD), data is A15=1 A14=0 (0xBFFD).
+/// register back; writing 0xBFFD sets it. Decoded on A15, A14 and A1: both ports
+/// need A1 low, then A14 picks between them — select is A15=1 A14=1 (0xFFFD),
+/// data is A15=1 A14=0 (0xBFFD).
 ///
 /// Register read-back is not a plain mirror: registers with fewer than 8
 /// meaningful bits return 0 in the unused positions, which is what
@@ -74,11 +75,16 @@ public sealed class Ay38912 : IPortBus
 
     // ── IPortBus ─────────────────────────────────────────────────────────────
 
-    /// <summary>Register select: A15 and A14 both high.</summary>
-    private static bool IsSelectPort(ushort port) => (port & 0xC000) == 0xC000;
+    // A1 must be low as well as the A15/A14 pattern. Without that the chip
+    // answers 0xFFFE — the "read every keyboard row" port — and corrupts the
+    // keyboard read, which crashes the 128 ROM during startup.
+    private const ushort AyDecodeMask = 0xC002;
 
-    /// <summary>Data write: A15 high, A14 low (0xBFFD).</summary>
-    private static bool IsDataPort(ushort port) => (port & 0xC000) == 0x8000;
+    /// <summary>Register select: A15 high, A14 high, A1 low (0xFFFD).</summary>
+    private static bool IsSelectPort(ushort port) => (port & AyDecodeMask) == 0xC000;
+
+    /// <summary>Data write: A15 high, A14 low, A1 low (0xBFFD).</summary>
+    private static bool IsDataPort(ushort port) => (port & AyDecodeMask) == 0x8000;
 
     public byte In(ushort port)
     {

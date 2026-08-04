@@ -360,8 +360,18 @@ already owns US-50x.
   channels, noise, envelope. Mix with the existing beeper into `IAudioSink`.
   Register read-back is not a plain mirror — unused bits read as 0.
 
-- [ ] **US-457 — `Host.ZxSpectrum128` runner**
-  Command-line host mirroring `Host.ZxSpectrum`, taking a 32K ROM image.
+- [x] **US-457 — `Host.ZxSpectrum128` runner**
+  Command-line host mirroring `Host.ZxSpectrum`. Takes either `--rom` (32K) or
+  `--rom0`/`--rom1` (two 16K images, as they are usually distributed).
+
+- [ ] **US-458 — Boot the 128 editor to its menu** ⚠️ **the machine does not boot yet**
+  See [FU-005](#fu-005--the-128-crashes-after-the-rom-memory-test).
+
+- [ ] **US-459 — AY noise and envelope generators**
+  Only the three tone channels are modelled. The noise generator (register 6,
+  mixer bits 3-5) and the envelope generator (registers 11-13) are absent, and
+  volume-register bit 4 currently reads as full volume so envelope-driven sound
+  is audible rather than silent.
 
 ---
 
@@ -531,6 +541,48 @@ dotnet run -c Release --project tests/CpuZ80.Benchmarks -- --filter '*MachineBen
 Record the result in `tests/CpuZ80.Benchmarks/BASELINE.md`, replacing the entry
 currently marked "NOT USABLE". Sanity check: StdDev should be a low single-digit
 percentage of the mean, and `ZX80 RenderFrame` should sit near 1.9 µs.
+
+### FU-005 — The 128 crashes after the ROM memory test
+
+**Status:** open, blocking US-458. The parts are built and unit-tested; the
+machine does not yet boot to the 128 menu.
+
+**What works.** Running the real `128-0.rom` / `128-1.rom`, the machine executes
+the ROM 0 startup correctly: the delay loop, then the RAM test paging banks
+6 → 3 → 0 through 0xC000. It then enables interrupts (IFF1, IM 1), pages ROM 1,
+and clears the screen — bank 5 ends with exactly 768 non-zero bytes, which is the
+attribute file, so `CLS` ran.
+
+**What fails.** The bitmap area stays entirely zero: no menu text is ever drawn.
+After ~60 frames the CPU is executing zeroed RAM as a NOP slide — 2,000
+consecutive distinct PCs incrementing by one — with `SP` wound down near 0x0000
+from repeated interrupts pushing onto a trashed stack. It stays there
+indefinitely (verified to 600 frames / 12 s emulated).
+
+**Ruled out.** The AY answering 0xFFFE was found and fixed during this work (it
+ANDed a register value into the "read every keyboard row" port), but the crash is
+unchanged, so that was a separate real bug rather than this one.
+
+**Not yet root-caused.** A last diagnostic that stepped the CPU directly was
+invalid — stepping bypasses `RunFrame`, so the machine never receives its 50 Hz
+interrupt and the trace is unrepresentative. Redo it driving `RunFrame` and
+sampling inside the frame.
+
+**Where to look next.** The trace showed execution inside ROM 1 around
+0x3300-0x3450 (the 48K ROM calculator and block-move routines) shortly before the
+dive, with ROM 1 paged. The 128 editor runs with ROM 1 paged and calls ROM 0
+routines through a trampoline in RAM, so the paging trampoline is the prime
+suspect. Worth checking:
+
+- whether `0x7FFD` writes from `OUT (C),A` (BC = 0x7FFD) reach the pager — the
+  partial decode is tested, but not through the CPU's `OUT (C),r` path;
+- interrupt timing: the interrupt is asserted for 32 T-states from frame start,
+  which is a guess rather than a measured figure;
+- whether anything writes to the ROM window and is silently dropped when it
+  should hit RAM.
+
+Unit tests cover each component in isolation; what is missing is a test that the
+composed machine reaches a known state from a real ROM. That test is US-458.
 
 ### FU-003 — Stop `RaylibHost` allocating on the audio path
 

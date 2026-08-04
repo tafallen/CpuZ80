@@ -109,9 +109,9 @@ public class Ay38912Tests
 
     [Theory]
     [InlineData(0xFFFD)] // canonical select port
-    [InlineData(0xFFFF)] // A1 high — still A15=1, A14=1
-    [InlineData(0xC000)] // A15=1, A14=1
-    public void SelectPortRespondsWhenA15AndA14AreHigh(ushort port)
+    [InlineData(0xFFF9)] // A1 low, A15=1, A14=1
+    [InlineData(0xC000)] // A15=1, A14=1, A1=0
+    public void SelectPortRespondsWhenA15AndA14AreHighAndA1Low(ushort port)
     {
         var ay = Chip();
         ay.Out(port, 0x05);
@@ -131,6 +131,8 @@ public class Ay38912Tests
     [InlineData(0x7FFD)] // paging port — A14 high but A15 low, must not select
     [InlineData(0x00FE)] // ULA port
     [InlineData(0x001F)] // Kempston
+    [InlineData(0xFFFE)] // A15/A14 high but A1 high — the "all keyboard rows" port
+    [InlineData(0xBFFE)] // A15 high, A14 low, but A1 high
     public void IgnoresPortsThatAreNotItsOwn(ushort port)
     {
         var ay = Chip();
@@ -146,6 +148,17 @@ public class Ay38912Tests
     {
         var ay = Chip();
         Assert.Equal(0xFF, ay.In(0x00FE));
+    }
+
+    [Fact]
+    public void DoesNotAnswerTheAllKeyboardRowsPort()
+    {
+        // Regression guard. 0xFFFE has A15 and A14 high but A1 high too, so the
+        // AY must stay off the bus. Answering it ANDs a register value into the
+        // keyboard read and crashes the 128 ROM during startup.
+        var ay = Chip();
+        Write(ay, 0, 0x00);
+        Assert.Equal(0xFF, ay.In(0xFFFE));
     }
 
     // ── Sound generation ─────────────────────────────────────────────────────
