@@ -76,8 +76,12 @@ registers.
 | `0xFFFD` | read | read selected register |
 | `0xBFFD` | write | write to selected register |
 
-Decoded on A15 and A14 (and A1 = 0): register port is A15=1 A14=1, data port is
-A15=0 A14=1.
+Decoded on A15 and A14. Both ports have **A15 high**; A14 picks between them —
+register select is A15=1 A14=1 (0xFFFD), data write is A15=1 A14=0 (0xBFFD).
+
+(Several online summaries state the data port as "A15=0, A14=1". That is wrong:
+0xBFFD is `1011 1111 1111 1101`, so A15 is 1 and A14 is 0. A decoding test caught
+this during implementation.)
 
 ## 5. Architecture
 

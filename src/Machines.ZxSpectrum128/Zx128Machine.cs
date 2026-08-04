@@ -28,12 +28,20 @@ public sealed class Zx128Machine
     public Zx128MemoryPager Pager { get; }
     public FerrantiUla5C6C Ula { get; }
 
+    /// <summary>The AY-3-8912 sound chip on ports 0xFFFD / 0xBFFD.</summary>
+    public Ay38912 Ay { get; }
+
     /// <summary>False when only a 16K image was supplied and ROM 1 is absent.</summary>
     public bool Rom1Present { get; }
 
     private readonly AddressDecoder _bus;
     private readonly Zx128PortBus _ports;
+    private readonly IAudioSink? _audioSink;
     private ulong _nextFrameTarget;
+    private ulong _lastRenderTState;
+
+    /// <summary>Scratch buffer for the AY, sized for one frame at 44.1 kHz.</summary>
+    private readonly short[] _ayBuffer = new short[1024];
 
     /// <summary>
     /// Builds a 128. <paramref name="romImage"/> is either a 32K image holding
@@ -97,8 +105,11 @@ public sealed class Zx128Machine
             UlaTiming.Spectrum128,
             isContended: Pager.IsContended);
 
+        Ay = new Ay38912();
+        _audioSink = audio;
+
         var joystick = keyboard is not null ? new KempstonJoystick(keyboard) : null;
-        _ports = new Zx128PortBus(Ula, Pager, joystick, new FerrantiUla5C6CBridge(() => Ula.FloatingBusValue));
+        _ports = new Zx128PortBus(Ula, Pager, Ay, joystick, new FerrantiUla5C6CBridge(() => Ula.FloatingBusValue));
 
         Cpu = new Cpu(_bus, _ports, Ula);
         Ula.ConnectCpu(Cpu);
@@ -151,7 +162,9 @@ public sealed class Zx128Machine
         Cpu.Reset();
         Pager.Reset();
         Ula.Reset();
+        Ay.Reset();
         _nextFrameTarget = Cpu.TotalCycles;
+        _lastRenderTState = Cpu.TotalCycles;
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -191,5 +204,27 @@ public sealed class Zx128Machine
         }
     }
 
-    public void RenderFrame(IVideoSink sink) => Ula.RenderFrame(sink, Cpu.TotalCycles);
+    public void RenderFrame(IVideoSink sink)
+    {
+        // The ULA renders video and the beeper; the AY is mixed in on top.
+        Ula.RenderFrame(sink, Cpu.TotalCycles);
+
+        if (_audioSink is not null)
+        {
+            ulong elapsed = Cpu.TotalCycles - _lastRenderTState;
+            _lastRenderTState = Cpu.TotalCycles;
+
+            if (elapsed > 0)
+            {
+                // One frame at 44.1 kHz is ~882 samples.
+                int sampleCount = Math.Min(_ayBuffer.Length, (int)(elapsed * 44100 / 3546900));
+                if (sampleCount > 0)
+                {
+                    var span = _ayBuffer.AsSpan(0, sampleCount);
+                    Ay.Render(span, elapsed);
+                    _audioSink.SubmitSamples(span, 44100);
+                }
+            }
+        }
+    }
 }
