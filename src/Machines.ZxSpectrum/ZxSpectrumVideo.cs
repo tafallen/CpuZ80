@@ -43,13 +43,20 @@ public sealed class ZxSpectrumVideo
         0xFFFFFFFF  // 7: White
     ];
 
-    private readonly Ram _ram;
+    private Ram _ram;
     private readonly uint[] _pixelBuffer = new uint[TotalWidth * TotalHeight];
 
     public ZxSpectrumVideo(Ram ram)
     {
         _ram = ram;
     }
+
+    /// <summary>
+    /// Re-points the video at another 16K bank. The 128K displays bank 5 or
+    /// bank 7 depending on bit 3 of port 0x7FFD, independently of what the CPU
+    /// has paged at 0xC000.
+    /// </summary>
+    public void SetSource(Ram ram) => _ram = ram;
 
     /// <summary>
     /// Renders the current state of Spectrum VRAM to the sink.

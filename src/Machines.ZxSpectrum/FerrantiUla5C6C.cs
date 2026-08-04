@@ -25,7 +25,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private readonly SinclairKeyboardAdapter? _keyboard;
     private readonly ITapeDevice?             _tape;
     private readonly IAudioSink?              _audioSink;
-    private readonly Ram                      _ram;
+    private Ram                               _ram;
     private Cpu? _cpu;
 
     // Border changes recorded during the frame currently executing. Rendered at
@@ -62,9 +62,28 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     /// <summary>Frame geometry this ULA is running to. Defaults to the 48K.</summary>
     public UlaTiming Timing { get; }
 
-    public FerrantiUla5C6C(Ram ram, SinclairKeyboardAdapter? keyboard = null, IAudioSink? audio = null, ITapeDevice? tape = null, UlaTiming? timing = null)
+    /// <summary>
+    /// Decides whether an address is subject to contention.
+    /// </summary>
+    /// <remarks>
+    /// On a 48K this is purely the address: only 0x4000-0x7FFF is contended. The
+    /// 128K supplies its own rule because 0xC000-0xFFFF contends only while an
+    /// odd RAM bank is paged there, which the address alone cannot tell you.
+    /// </remarks>
+    private readonly Func<ushort, bool> _isContended;
+
+    private static bool Contended48K(ushort address) => address >= 0x4000 && address <= 0x7FFF;
+
+    public FerrantiUla5C6C(
+        Ram ram,
+        SinclairKeyboardAdapter? keyboard = null,
+        IAudioSink? audio = null,
+        ITapeDevice? tape = null,
+        UlaTiming? timing = null,
+        Func<ushort, bool>? isContended = null)
     {
-        Timing     = timing ?? UlaTiming.Spectrum48;
+        Timing       = timing ?? UlaTiming.Spectrum48;
+        _isContended = isContended ?? Contended48K;
         _ram       = ram;
         _video     = new ZxSpectrumVideo(ram);
         _beeper    = new BeeperDevice();
@@ -74,6 +93,16 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     }
 
     public void ConnectCpu(Cpu cpu) => _cpu = cpu;
+
+    /// <summary>
+    /// Points the display and the floating bus at another 16K bank. The 128K
+    /// uses this for the shadow screen; the 48K never calls it.
+    /// </summary>
+    public void SetScreenSource(Ram ram)
+    {
+        _ram = ram;
+        _video.SetSource(ram);
+    }
 
     public void Reset()
     {
@@ -156,7 +185,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
 
     public void OnMemoryAccess(ushort address, Cpu cpu)
     {
-        if (address >= 0x4000 && address <= 0x7FFF)
+        if (_isContended(address))
         {
             ApplyContention(cpu);
         }

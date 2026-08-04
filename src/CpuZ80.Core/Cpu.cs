@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Machines.ZxSpectrum.Tests")]
 [assembly: InternalsVisibleTo("Machines.Zx81.Tests")]
 [assembly: InternalsVisibleTo("Machines.Zx80.Tests")]
+[assembly: InternalsVisibleTo("Machines.ZxSpectrum128.Tests")]
 
 namespace CpuZ80.Core;
 

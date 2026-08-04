@@ -90,13 +90,21 @@ public sealed class Zx128Machine
         var kbAdapter = keyboard is not null ? new SinclairKeyboardAdapter(keyboard) : null;
 
         // The ULA displays bank 5 at reset; US-455 will let it follow the pager.
-        Ula = new FerrantiUla5C6C(Banks[5], kbAdapter, audio, tape, UlaTiming.Spectrum128);
+        // Contention is delegated to the pager: 0xC000-0xFFFF contends only while
+        // an odd bank is paged there, which the address alone cannot express.
+        Ula = new FerrantiUla5C6C(
+            Banks[5], kbAdapter, audio, tape,
+            UlaTiming.Spectrum128,
+            isContended: Pager.IsContended);
 
         var joystick = keyboard is not null ? new KempstonJoystick(keyboard) : null;
         _ports = new Zx128PortBus(Ula, Pager, joystick, new FerrantiUla5C6CBridge(() => Ula.FloatingBusValue));
 
         Cpu = new Cpu(_bus, _ports, Ula);
         Ula.ConnectCpu(Cpu);
+
+        // Bit 3 of 0x7FFD moves the display between bank 5 and bank 7.
+        Pager.PagingChanged += () => Ula.SetScreenSource(Banks[Pager.ScreenBank]);
     }
 
     /// <summary>A 16K ROM reading as open bus, standing in for an absent ROM 1.</summary>
