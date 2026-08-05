@@ -598,18 +598,46 @@ Instruction-level tracing shows:
 So paging, ROM switching and the stack swap are all behaving. The observed
 `SP` = 0x5BEF is normal *for that context*.
 
-#### What is still unexplained
+#### Where it actually diverges
 
-`TEST-ROOM` (ROM1 0x1F05) runs while the machine is in the small-stack context,
-compares `STKEND` = 0x5CCE against `SP` = 0x5BEF, and correctly reports "out of
-memory". The open question is why a routine that needs the main stack is reached
-in that context at all.
+Following `ERR_SP` backwards gives an unbroken chain, each link measured:
 
-`ERR_SP` = 0 is the strongest remaining thread. On a working machine it points
-into the stack area; if it is never written, some part of initialisation did not
-run, and that same gap could explain the context confusion. Check whether
-anything ever writes 0x5C3D, and if not, work backwards to the routine that
-should have.
+1. `ERR_SP` (0x5C3D) is **never written** — 0 writes across 70 frames, watched by
+   polling bank 5 directly (which does not tick the clock).
+2. Every instruction in either ROM that stores to `ERR_SP` is **never reached**.
+   ROM 0 has six (0x027C, 0x0314, 0x1A4D, 0x1A60, 0x1A7A, 0x0606); ROM 1 has nine.
+3. The nearest one, ROM 0 `0x027C`, sits inside the editor's main-loop entry at
+   `0x026B`, which arms error recovery:
+
+```
+026B: LD HL,0x5B66 / SET 0,(HL)
+0270: LD (IY+0),0xFF / LD (IY+0x31),0x02
+0278: LD HL,0x5B1D / PUSH HL      ; RAM routine that pages ROM 0 back in
+027C: LD (ERR_SP),SP              ; so an error in ROM 1 returns here
+0280: LD HL,0x02BA / LD (0x5B8B),HL / CALL 0x228E
+```
+
+   That is the 128's error-recovery design: `ERR_SP` points at a stack whose top
+   is 0x5B1D, so `LD SP,(ERR_SP)` + `RET` pages ROM 0 back and re-enters the
+   editor. Execution in that region stops at `0x0268` and never reaches `0x026B`.
+4. `0x026B` has exactly three callers, all in ROM 0 — `0x1B11`, `0x1B28`,
+   `0x2CC9`. **None is ever reached.**
+5. Only **399 distinct ROM 0 addresses** execute in 70 frames, and the whole
+   `0x1Axx`/`0x1Bxx` region — the editor's main loop and error handling — is
+   never entered at all. Nor is `0x00C3`, the editor re-entry point.
+
+Regions of ROM 0 that do execute: `00xx 01xx 02xx 05xx 1Cxx 1Fxx 25xx 28xx 2Exx
+35xx 36xx 37xx 3Axx 3Bxx 3Fxx`.
+
+So the editor completes low-level initialisation and does a lot of work, but
+never transfers control into its main loop. The "out of memory" report is a
+downstream symptom: ROM 1 code runs on the small inter-ROM stack with error
+recovery unarmed, so the first error is fatal instead of returning to the editor.
+
+**Next step:** find what should transfer control into ROM 0 `0x1Axx`/`0x1Bxx` and
+why it does not. Work forward from the regions that do run (`0x25xx`, `0x28xx`,
+`0x2Exx`, `0x35xx`-`0x37xx`) looking for the branch that should reach the main
+loop, and check the condition it depends on.
 
 #### Ruled out by test
 
