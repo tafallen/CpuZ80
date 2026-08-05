@@ -571,35 +571,45 @@ not the fault.
 TEST-ROOM is *right* to complain: at that moment `SP` = 0x5BEF while
 `STKEND` = 0x5CCE, so the stack is below the BASIC area.
 
-#### Why SP is wrong
+#### Correction: the trampoline is NOT at fault
 
-ROM 0 switches ROMs with a stack-swapping trampoline — one stack per ROM context,
-swapped through the word at 0x5B81:
+An earlier iteration of this entry claimed ROM 0's stack-swapping trampoline
+swapped an odd number of times, leaving BASIC on the wrong stack. **That was
+wrong** and is recorded here so nobody re-derives it.
 
-```
-ROM0 0x1F45:  EX AF,AF' / DI / POP AF
-              LD (0x5B58),HL
-              LD HL,(0x5B81)
-              LD (0x5B81),SP     ; save current SP
-              LD SP,HL           ; switch to the other context's stack
-              ...
-              LD A,7 : CALL 0x1F3A
-ROM0 0x1F3A:  PUSH BC : LD BC,0x7FFD : OUT (C),A : LD (0x5B5C),A : POP BC : RET
-ROM0 0x1F20:  the mirror image, swapping back
-```
+Instruction-level tracing shows:
 
-Tracing SP shows the swap happening an **odd** number of times:
+- `0x1F20` / `0x1F45` write `A=0` and `A=7` to 0x7FFD. Bit 4 is clear in both, so
+  these page **banks**, not ROMs. Both entries complete and restore SP correctly.
+- The actual ROM switch is a RAM routine at 0x5B00, and it works:
 
 ```
-step 239,015  PC=0x0151  SP 0xFFFF -> 0x5BFF   (initial setup)
-step 239,298  PC=0x01A7  SP 0x5BFF -> 0xFF58   (main stack established)
-step 256,226  PC=0x1F52  SP 0xFF58 -> 0x5BFF   swap in
-step 256,399  PC=0x1F32  SP 0x5BFF -> 0xFF58   swap back
-step 256,415  PC=0x1F52  SP 0xFF58 -> 0x5BFF   swap in -- never returns
+5B00: PUSH AF / PUSH BC / LD BC,0x7FFD
+5B05: LD A,(0x5B5C)     ; shadow copy of the last 0x7FFD value
+5B08: XOR 0x10          ; flip the ROM bit
+5B0A: DI / LD (0x5B5C),A / OUT (C),A / EI / POP BC / POP AF / RET
 ```
 
-So BASIC ends up executing in the ROM-1 context while still on the ROM-0
-context's small stack at 0x5BFF. One trampoline entry does not complete.
+  ROM goes 0 -> 1 at the `OUT`, exactly as intended.
+- The small stack around 0x5BFF is the **intended** stack for this mechanism —
+  the routine at 0x5B00 runs with its stack immediately above itself. It is not
+  corruption.
+
+So paging, ROM switching and the stack swap are all behaving. The observed
+`SP` = 0x5BEF is normal *for that context*.
+
+#### What is still unexplained
+
+`TEST-ROOM` (ROM1 0x1F05) runs while the machine is in the small-stack context,
+compares `STKEND` = 0x5CCE against `SP` = 0x5BEF, and correctly reports "out of
+memory". The open question is why a routine that needs the main stack is reached
+in that context at all.
+
+`ERR_SP` = 0 is the strongest remaining thread. On a working machine it points
+into the stack area; if it is never written, some part of initialisation did not
+run, and that same gap could explain the context confusion. Check whether
+anything ever writes 0x5C3D, and if not, work backwards to the routine that
+should have.
 
 #### Ruled out by test
 
