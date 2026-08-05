@@ -581,7 +581,7 @@ public sealed partial class Cpu
             case 0x64: /* NEG */ { Tick(4); NEG(); } break;
             case 0x65: /* RETN */ { Tick(4); RETN(); Tick(3); Tick(3); } break;
             case 0x66: /* IM 0 */ { Tick(4); _interruptMode = 0; } break;
-            case 0x67: /* RRD */ { Tick(4); Tick(3); byte tmp = Read(HL); Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); WZ = (ushort)(HL + 1); Tick(4); Tick(3); } break;
+            case 0x67: /* RRD */ { Tick(4); Tick(3); byte tmp = Read(HL); Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); FlagH = false; FlagN = false; WZ = (ushort)(HL + 1); Tick(4); Tick(3); } break;
             case 0x68: /* IN L, (C) */ { Tick(4); { PortTick(BC); byte val = _ports?.In(BC) ?? 0xFF; L = val; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; } break;
             case 0x69: /* OUT (C), L */ { Tick(4); { PortTick(BC); byte val = L; _ports?.Out(BC, val); }; } break;
             case 0x6A: /* ADC HL, HL */ { Tick(4); Tick(4); HL = DoAdc16(HL, HL); Tick(3); } break;
@@ -589,7 +589,7 @@ public sealed partial class Cpu
             case 0x6C: /* NEG */ { Tick(4); NEG(); } break;
             case 0x6D: /* RETN */ { Tick(4); RETN(); Tick(3); Tick(3); } break;
             case 0x6E: /* IM 0 */ { Tick(4); _interruptMode = 0; } break;
-            case 0x6F: /* RLD */ { Tick(4); Tick(3); byte tmp = Read(HL); Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); WZ = (ushort)(HL + 1); Tick(4); Tick(3); } break;
+            case 0x6F: /* RLD */ { Tick(4); Tick(3); byte tmp = Read(HL); Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); FlagH = false; FlagN = false; WZ = (ushort)(HL + 1); Tick(4); Tick(3); } break;
             case 0x70: /* IN Read(HL), (C) */ { Tick(4); { PortTick(BC); byte val = _ports?.In(BC) ?? 0xFF; FlagS = (val & 0x80) != 0; FlagZ = val == 0; FlagH = false; FlagPV = GetParity(val); FlagN = false; SetUndocumentedFlags(val); }; } break;
             case 0x71: /* OUT (C), Read(HL) */ { Tick(4); { PortTick(BC); byte val = (byte)0; _ports?.Out(BC, val); }; } break;
             case 0x72: /* SBC HL, SP */ { Tick(4); Tick(4); HL = DoSbc16(HL, SP); Tick(3); } break;
@@ -633,7 +633,7 @@ public sealed partial class Cpu
             case 0x09: /* ADD _ix, BC */ { Tick(4); _ix = DoAdd16(_ix, BC); Tick(4); Tick(3); } break;
             case 0x19: /* ADD _ix, DE */ { Tick(4); _ix = DoAdd16(_ix, DE); Tick(4); Tick(3); } break;
             case 0x21: /* LD _ix, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); _ix = (ushort)(lo | (hi << 8)); } break;
-            case 0x22: /* LD (nn), _ix */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1); Tick(3); Write(nn, L); Tick(3); Write((ushort)(nn + 1), H); } break;
+            case 0x22: /* LD (nn), _ix */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1); Tick(3); Write(nn, _ixl); Tick(3); Write((ushort)(nn + 1), _ixh); } break;
             case 0x23: /* INC _ix */ { Tick(6); _ix++; } break;
             case 0x24: /* INC _ixh */ { Tick(4); _ixh = DoInc(_ixh); } break;
             case 0x25: /* DEC _ixh */ { Tick(4); _ixh = DoDec(_ixh); } break;
@@ -730,7 +730,7 @@ public sealed partial class Cpu
             case 0x09: /* ADD _iy, BC */ { Tick(4); _iy = DoAdd16(_iy, BC); Tick(4); Tick(3); } break;
             case 0x19: /* ADD _iy, DE */ { Tick(4); _iy = DoAdd16(_iy, DE); Tick(4); Tick(3); } break;
             case 0x21: /* LD _iy, nn */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); _iy = (ushort)(lo | (hi << 8)); } break;
-            case 0x22: /* LD (nn), _iy */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1); Tick(3); Write(nn, L); Tick(3); Write((ushort)(nn + 1), H); } break;
+            case 0x22: /* LD (nn), _iy */ { Tick(4); Tick(3); byte lo = Fetch(); Tick(3); byte hi = Fetch(); ushort nn = (ushort)(lo | (hi << 8)); WZ = (ushort)(nn + 1); Tick(3); Write(nn, _iyl); Tick(3); Write((ushort)(nn + 1), _iyh); } break;
             case 0x23: /* INC _iy */ { Tick(6); _iy++; } break;
             case 0x24: /* INC _iyh */ { Tick(4); _iyh = DoInc(_iyh); } break;
             case 0x25: /* DEC _iyh */ { Tick(4); _iyh = DoDec(_iyh); } break;

@@ -170,10 +170,10 @@ class Program
                 new[] { "", "HL = DoSbc16(HL, " + dd[i] + ")" }, new[] { 4, 4, 3 })); // 15 total
         }
         edInstructions.Add(new Instruction(0x67, "RRD", 
-            new[] { "", "byte tmp = Read(HL); Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
+            new[] { "", "byte tmp = Read(HL); Write(HL, (byte)((tmp >> 4) | (A << 4))); A = (byte)((A & 0xF0) | (tmp & 0x0F)); SetLogicFlags(A); FlagH = false; FlagN = false; WZ = (ushort)(HL + 1)" }, 
             new[] { 4, 3, 4, 3 })); // 18 total
         edInstructions.Add(new Instruction(0x6F, "RLD", 
-            new[] { "", "byte tmp = Read(HL); Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); WZ = (ushort)(HL + 1)" }, 
+            new[] { "", "byte tmp = Read(HL); Write(HL, (byte)((tmp << 4) | (A & 0x0F))); A = (byte)((A & 0xF0) | (tmp >> 4)); SetLogicFlags(A); FlagH = false; FlagN = false; WZ = (ushort)(HL + 1)" }, 
             new[] { 4, 3, 4, 3 })); // 18 total
         for (int i = 0; i < 3; i++) {
             if (i == 2) continue; // SP handle separately
@@ -559,6 +559,10 @@ class Program
                     actions[i] = actions[i].Replace(" H ", $" {regH} ").Replace(" L ", $" {regL} ");
                     actions[i] = actions[i].Replace(" H;", $" {regH};").Replace(" L;", $" {regL};");
                     actions[i] = actions[i].Replace("(H)", $"({regH})").Replace("(L)", $"({regL})");
+                    // Operand position, as in Write(nn, L) / Write((ushort)(nn + 1), H).
+                    // Without this LD (nn),IX silently stored HL: the mnemonic was
+                    // rewritten but the action was not.
+                    actions[i] = actions[i].Replace(", H)", $", {regH})").Replace(", L)", $", {regL})");
                     actions[i] = actions[i].Replace("H = ", $"{regH} = ").Replace("L = ", $"{regL} = ");
                     actions[i] = actions[i].Replace("DoInc(H)", $"DoInc({regH})");
                     actions[i] = actions[i].Replace("DoInc(L)", $"DoInc({regL})");

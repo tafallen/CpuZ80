@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    name: Build and unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore
+
+      # Build warnings are treated as defects in this repo, so fail on any.
+      - name: Build
+        run: dotnet build -c Release --no-restore -warnaserror
+
+      - name: Test
+        run: dotnet test -c Release --no-build --verbosity normal
+
+  zexall:
+    name: ZEXALL instruction exerciser
+    runs-on: ubuntu-latest
+    # Billions of emulated cycles: slow, so it runs beside the unit tests rather
+    # than gating them.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # AGENTS.md requires documented instructions to pass ZEXALL, but nothing
+      # enforced it — and two whole instruction groups (every BIT/SET/RES/shift
+      # on (IX+d), and 16-bit ADC/SBC flags) were silently broken as a result.
+      # That cost a long detour debugging a ZX Spectrum 128 that would not boot.
+      # See FU-005 in docs/backlog.md.
+      #
+      # The exerciser exits non-zero when any CRC mismatches, so no extra
+      # checking is needed here.
+      - name: Run ZEXALL
+        run: dotnet run -c Release --project tests/CpuZ80.Exerciser

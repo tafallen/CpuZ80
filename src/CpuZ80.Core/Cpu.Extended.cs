@@ -153,17 +153,6 @@ public sealed partial class Cpu
 
     private void RET() { PC = Pop(); }
 
-    private void RRD()
-    {
-        byte mem = Read(HL);
-        byte lowA = (byte)(A & 0x0F);
-        A = (byte)((A & 0xF0) | (mem & 0x0F));
-        mem = (byte)((lowA << 4) | (mem >> 4));
-        Write(HL, mem);
-        FlagH = false;
-        FlagN = false;
-        SetLogicFlags(A);
-    }
 
     private void INI()
     {
@@ -225,16 +214,5 @@ public sealed partial class Cpu
         if (B != 0) { PC -= 2; Tick(5); }
     }
 
-    private void RLD()
-    {
-        byte mem = Read(HL);
-        byte lowA = (byte)(A & 0x0F);
-        A = (byte)((A & 0xF0) | (mem >> 4));
-        mem = (byte)((mem << 4) | lowA);
-        Write(HL, mem);
-        FlagH = false;
-        FlagN = false;
-        SetLogicFlags(A);
-    }
 }
 

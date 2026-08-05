@@ -370,23 +370,26 @@ already owns US-50x.
   `Zx128MachineTests.RealRoms_BootToTheEditorMenu`, which skips when the
   gitignored ROM images are absent. Root cause in FU-005 below.
 
-- [ ] **US-460 — Close the last two ZEXALL failures**
-  ZEXALL now reports 65 OK and 2 errors, down from 5. The DD/FD-CB generator fix
-  cleared `bit n,(<ix,iy>+1)`, `shf/rot (<ix,iy>+1)` and `<set,res> n,(<ix,iy>+1)`
-  together; the flag fix cleared `<adc,sbc> hl,<bc,de,hl,sp>`. Still failing:
+- [x] **US-460 — Close the last two ZEXALL failures** ✅
+  **ZEXALL now passes completely: 67/67, zero errors.**
 
-  - `ld (nnnn),<ix,iy>` — `LD (nn),IX` / `LD (nn),IY`
-  - `<rrd,rld>` — `RRD` / `RLD`, most likely the S/Z/P-V flags computed from the
-    resulting accumulator, the same class of omission as the 16-bit ADC/SBC bug
+  - `ld (nnnn),<ix,iy>` — the indexed transform in `CpuZ80.CodeGen` rewrote the
+    `H = ` / `L = ` assignment forms but not the *operand* position, so
+    `Write(nn, L)` and `Write((ushort)(nn + 1), H)` matched nothing and
+    `LD (nn),IX` silently stored **HL**. The mnemonic had been rewritten, which
+    made the generated code look right at a glance.
+  - `<rrd,rld>` — `SetLogicFlags` sets S, Z and P/V and correctly leaves Carry
+    alone, but nothing cleared **H** and **N**, so both kept whatever the
+    previous instruction left behind.
 
-  Neither blocks the 128, which boots with both outstanding. Fix in
-  `CpuZ80.CodeGen`, never by editing `Cpu.Generated.cs`. Run the exerciser with
-  `dotnet run -c Release --project tests/CpuZ80.Exerciser`; it takes a while, so
-  redirect to a file rather than piping, or the output stays buffered.
+  Also removed the standalone `RRD()` / `RLD()` methods from `Cpu.Extended.cs`.
+  They were dead code the generated dispatcher never called — and they cleared
+  H and N correctly, so a correct implementation sat unused beside a broken
+  generated one. Exactly the shape of the DD/FD-CB bug in FU-005.
 
-  **Worth wiring into CI.** AGENTS.md requires ZEXALL to pass, but nothing
-  enforced it, and two whole instruction groups were silently broken for as long
-  as it went unrun — see FU-005.
+  CI now runs the exerciser (`.github/workflows/ci.yml`). The repo had no CI at
+  all, which is why AGENTS.md's ZEXALL requirement went unenforced long enough
+  for two whole instruction groups to break silently.
 
 - [ ] **US-459 — AY noise and envelope generators**
   Only the three tone channels are modelled. The noise generator (register 6,
