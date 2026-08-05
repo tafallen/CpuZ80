@@ -364,8 +364,11 @@ already owns US-50x.
   Command-line host mirroring `Host.ZxSpectrum`. Takes either `--rom` (32K) or
   `--rom0`/`--rom1` (two 16K images, as they are usually distributed).
 
-- [ ] **US-458 — Boot the 128 editor to its menu** ⚠️ **the machine does not boot yet**
-  See [FU-005](#fu-005--the-128-crashes-after-the-rom-memory-test).
+- [x] **US-458 — Boot the 128 editor to its menu** ✅
+  The 128 boots to its menu (128 logo, Tape Loader / 128 BASIC / Calculator /
+  48 BASIC / Tape Tester, © 1986 Sinclair Research Ltd). Covered end-to-end by
+  `Zx128MachineTests.RealRoms_BootToTheEditorMenu`, which skips when the
+  gitignored ROM images are absent. Root cause in FU-005 below.
 
 - [ ] **US-459 — AY noise and envelope generators**
   Only the three tone channels are modelled. The noise generator (register 6,
@@ -542,144 +545,54 @@ Record the result in `tests/CpuZ80.Benchmarks/BASELINE.md`, replacing the entry
 currently marked "NOT USABLE". Sanity check: StdDev should be a low single-digit
 percentage of the mean, and `ZX80 RenderFrame` should sit near 1.9 µs.
 
-### FU-005 — The 128 reports "4 Out of memory" and crashes
+### FU-005 — RESOLVED: the 128 now boots
 
-**Status:** open, blocking US-458. Narrowed to a specific mechanism; root cause
-not yet identified.
+**Status:** fixed. Two CPU bugs, both found by running ZEXALL rather than by
+reading the ROM disassembly.
 
-#### What actually happens
+#### The real cause: DD/FD-CB instructions were silent no-ops
 
-The machine boots much further than "it crashes" suggests. Memory sizing is
-**correct** — after startup `P_RAMT` = 0xFFFF and `RAMTOP` = 0xFF57, so the ROM
-found all 128K, and reads/writes through the 0x4000, 0x8000 and 0xC000 windows
-all verify.
+The code generator built these instructions with a *single* action string, then
+dropped it:
 
-The failure is a genuine ROM error report, not a wild jump:
-
-```
-ROM1 0x1F05  TEST-ROOM:  LD HL,(STKEND) / ADD HL,BC / SBC HL,SP / RET C
-ROM1 0x1F15              LD L,3 : JP 0x0055        -> report "4 Out of memory"
-ROM1 0x0055  ERROR-2:    LD (IY+0),L
-ROM1 0x0058              LD SP,(0x5C3D)   ; ERR_SP, which contains 0
-ROM1 0x005C              JP 0x16C5
+```csharp
+var skippedActions = inst.Actions.Skip(2).ToArray();   // Actions.Length == 1
 ```
 
-`ERR_SP` is 0, so the error handler sets `SP` = 0, the stack unwinds into nothing
-and the CPU ends up sliding through zeroed RAM. The NOP slide is the aftermath,
-not the fault.
+Skipping two entries of a one-entry array yields nothing, so every
+`BIT n,(IX+d)`, `SET`/`RES n,(IX+d)` and shift/rotate on an index register
+generated a case that only burned cycles:
 
-TEST-ROOM is *right* to complain: at that moment `SP` = 0x5BEF while
-`STKEND` = 0x5CCE, so the stack is below the BASIC area.
-
-#### Correction: the trampoline is NOT at fault
-
-An earlier iteration of this entry claimed ROM 0's stack-swapping trampoline
-swapped an odd number of times, leaving BASIC on the wrong stack. **That was
-wrong** and is recorded here so nobody re-derives it.
-
-Instruction-level tracing shows:
-
-- `0x1F20` / `0x1F45` write `A=0` and `A=7` to 0x7FFD. Bit 4 is clear in both, so
-  these page **banks**, not ROMs. Both entries complete and restore SP correctly.
-- The actual ROM switch is a RAM routine at 0x5B00, and it works:
-
-```
-5B00: PUSH AF / PUSH BC / LD BC,0x7FFD
-5B05: LD A,(0x5B5C)     ; shadow copy of the last 0x7FFD value
-5B08: XOR 0x10          ; flip the ROM bit
-5B0A: DI / LD (0x5B5C),A / OUT (C),A / EI / POP BC / POP AF / RET
+```csharp
+case 0x40: /* BIT 0, (IX+d) */ { Tick(3); Tick(3); Tick(3); Tick(3); } break;
 ```
 
-  ROM goes 0 -> 1 at the `OUT`, exactly as intended.
-- The small stack around 0x5BFF is the **intended** stack for this mechanism —
-  the routine at 0x5B00 runs with its stack immediately above itself. It is not
-  corruption.
+The cycle skip is deliberate — the DD/FD and CB prefix fetches are emitted by the
+handler preamble — but the actions must be kept. The Spectrum ROM keeps `IY` as
+its system-variable base and tests flags with `BIT n,(IY+d)` constantly, so its
+branches were effectively random. That is why the editor never reached its main
+loop, never armed error recovery, and died on the first error.
 
-So paging, ROM switching and the stack swap are all behaving. The observed
-`SP` = 0x5BEF is normal *for that context*.
+Fixing this also required deciding the undocumented register copy at generation
+time: operand 6 is the plain `(IX+d)` form with no copy, and `regs[6]` is
+`"Read(HL)"`, which is not assignable — the old code emitted it inside a dead
+`if (6 != 6)` that no longer compiled once the action was actually included.
 
-#### Where it actually diverges
+#### Second bug: 16-bit ADC/SBC did not set S or Z
 
-Following `ERR_SP` backwards gives an unbroken chain, each link measured:
+`DoAdc16` and `DoSbc16` set N, H, P/V, C and the undocumented bits, but never
+Sign or Zero. `SBC HL,rr` followed by `JR Z` is *the* idiomatic 16-bit
+comparison, so every such comparison used a stale flag. `TEST-ROOM` — the
+routine that reported "4 Out of memory" — is `SBC HL,SP` + `RET C`.
 
-1. `ERR_SP` (0x5C3D) is **never written** — 0 writes across 70 frames, watched by
-   polling bank 5 directly (which does not tick the clock).
-2. Every instruction in either ROM that stores to `ERR_SP` is **never reached**.
-   ROM 0 has six (0x027C, 0x0314, 0x1A4D, 0x1A60, 0x1A7A, 0x0606); ROM 1 has nine.
-3. The nearest one, ROM 0 `0x027C`, sits inside the editor's main-loop entry at
-   `0x026B`, which arms error recovery:
+#### What this says about the earlier investigation
 
-```
-026B: LD HL,0x5B66 / SET 0,(HL)
-0270: LD (IY+0),0xFF / LD (IY+0x31),0x02
-0278: LD HL,0x5B1D / PUSH HL      ; RAM routine that pages ROM 0 back in
-027C: LD (ERR_SP),SP              ; so an error in ROM 1 returns here
-0280: LD HL,0x02BA / LD (0x5B8B),HL / CALL 0x228E
-```
+Hours went into tracing the ROM: the trampoline, the paging, `ERR_SP`, the stack
+swaps. All of it was downstream of a CPU that silently mis-executed a whole
+instruction group. **Run the instruction exerciser before reverse-engineering a
+ROM.** AGENTS.md already required ZEXALL to pass; nothing enforced it.
 
-   That is the 128's error-recovery design: `ERR_SP` points at a stack whose top
-   is 0x5B1D, so `LD SP,(ERR_SP)` + `RET` pages ROM 0 back and re-enters the
-   editor. Execution in that region stops at `0x0268` and never reaches `0x026B`.
-4. `0x026B` has exactly three callers, all in ROM 0 — `0x1B11`, `0x1B28`,
-   `0x2CC9`. **None is ever reached.**
-5. Only **399 distinct ROM 0 addresses** execute in 70 frames, and the whole
-   `0x1Axx`/`0x1Bxx` region — the editor's main loop and error handling — is
-   never entered at all. Nor is `0x00C3`, the editor re-entry point.
-
-Regions of ROM 0 that do execute: `00xx 01xx 02xx 05xx 1Cxx 1Fxx 25xx 28xx 2Exx
-35xx 36xx 37xx 3Axx 3Bxx 3Fxx`.
-
-So the editor completes low-level initialisation and does a lot of work, but
-never transfers control into its main loop. The "out of memory" report is a
-downstream symptom: ROM 1 code runs on the small inter-ROM stack with error
-recovery unarmed, so the first error is fatal instead of returning to the editor.
-
-**Next step:** find what should transfer control into ROM 0 `0x1Axx`/`0x1Bxx` and
-why it does not. Work forward from the regions that do run (`0x25xx`, `0x28xx`,
-`0x2Exx`, `0x35xx`-`0x37xx`) looking for the branch that should reach the main
-loop, and check the condition it depends on.
-
-#### Ruled out by test
-
-- **`OUT (C),A` to 0x7FFD** — this is how the ROM actually pages, and the pager's
-  own tests call `Out()` directly, so it was the prime suspect. Verified working.
-- **`OUT (n),A` to 0x7FFD**, the other encoding. Works.
-- **`LD (nn),SP` / `LD SP,(nn)` / `LD SP,HL`** round-trip — the trampoline's stack
-  swap primitives. All work.
-- **The AY answering 0xFFFE** — a real bug found and fixed during this work, but
-  the crash is unchanged, so it was separate.
-
-`Zx128PagingViaCpuTests` covers these five, executed as Z80 code rather than by
-calling the devices directly.
-
-#### Still to investigate
-
-The trampoline manipulates `DI`/`EI`, `EX AF,AF'` and `PUSH AF`/`POP AF` while
-swapping stacks. Interrupt handling around that sequence is the strongest
-remaining suspect:
-
-- `Zx128Machine.RunFrame` asserts the interrupt for **32 T-states** from frame
-  start. That figure is a guess carried over from the 48K, not a measured value.
-  An interrupt accepted at the wrong moment inside the trampoline would leave the
-  stacks mismatched exactly as observed.
-- `EX AF,AF'` interaction with interrupt acceptance is worth checking against the
-  CPU tests — it is exercised there, but not in combination with an interrupt
-  arriving mid-sequence.
-- Compare the step at which the third swap happens against a reference emulator
-  to see whether it is reached at the same point in the frame.
-
-#### Methodology notes for whoever picks this up
-
-Two diagnostics gave misleading results before being corrected. Both are easy to
-repeat by accident:
-
-- **Stepping the CPU directly** (`machine.Step()` in a loop) starves it of the
-  50 Hz interrupt, because that is asserted by `RunFrame`. Replicate `RunFrame`'s
-  interrupt handling in any instrumented loop.
-- **Reading opcodes with `machine.ReadMemory()` while tracing** ticks the clock
-  3 T-states per call and applies contention, which badly distorts frame timing
-  and changes program behaviour. Trace `PC` only and decode opcodes offline from
-  the ROM image.
+Remaining ZEXALL failures are tracked as US-460.
 
 ### FU-003 — Stop `RaylibHost` allocating on the audio path
 

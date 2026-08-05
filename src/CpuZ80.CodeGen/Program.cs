@@ -271,7 +271,7 @@ class Program
             
             if (opcode < 0x40) { // Shifts
                 mnem = $"{shiftNames[type]} (IX+d)";
-                act = "{ byte val = Read(WZ); val = DoShift(" + type + ", val); Write(WZ, val); if (" + reg + " != 6) " + regs[reg] + " = val; }";
+                act = "{ byte val = Read(WZ); val = DoShift(" + type + ", val); Write(WZ, val);" + IndexedCopy(reg, regs) + " }";
                 cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // DD(4), CB(4), d(3), op(3), R(3), W(3), W(3) = 23 total
             } else if (opcode < 0x80) { // BIT
                 mnem = $"BIT {bit}, (IX+d)";
@@ -279,11 +279,11 @@ class Program
                 cycles = new[] { 4, 4, 3, 3, 3, 3 }; // 4+4+3+3+3+3 = 20 total
             } else if (opcode < 0xC0) { // RES
                 mnem = $"RES {bit}, (IX+d)";
-                act = "{ byte val = Read(WZ); val = (byte)(val & ~(1 << " + bit + ")); Write(WZ, val); if (" + reg + " != 6) " + regs[reg] + " = val; }";
+                act = "{ byte val = Read(WZ); val = (byte)(val & ~(1 << " + bit + ")); Write(WZ, val);" + IndexedCopy(reg, regs) + " }";
                 cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // 23 total
             } else { // SET
                 mnem = $"SET {bit}, (IX+d)";
-                act = "{ byte val = Read(WZ); val = (byte)(val | (1 << " + bit + ")); Write(WZ, val); if (" + reg + " != 6) " + regs[reg] + " = val; }";
+                act = "{ byte val = Read(WZ); val = (byte)(val | (1 << " + bit + ")); Write(WZ, val);" + IndexedCopy(reg, regs) + " }";
                 cycles = new[] { 4, 4, 3, 3, 3, 3, 3 }; // 23 total
             }
 
@@ -393,8 +393,16 @@ class Program
         sb.AppendLine("        switch (opcode)");
         sb.AppendLine("        {");
         foreach (var inst in ddcbInstructions.OrderBy(i => i.Opcode)) {
+             // The DD/FD and CB prefix fetches are emitted by the handler
+             // preamble above, so their two cycle entries are dropped here.
+             // The ACTIONS must not be: these instructions carry a single
+             // action string, so Skip(2) discarded it and produced a case that
+             // only burned cycles -- every BIT/SET/RES/shift on (IX+d) was a
+             // silent no-op. Only skip when the actions are per-M-cycle.
              var skippedCycles = inst.Cycles.Skip(2).ToArray();
-             var skippedActions = inst.Actions.Skip(2).ToArray();
+             var skippedActions = inst.Actions.Length > 2
+                 ? inst.Actions.Skip(2).ToArray()
+                 : inst.Actions;
              var skippedInst = inst with { Cycles = skippedCycles, Actions = skippedActions };
              GenerateCase(sb, skippedInst);
         }
@@ -413,8 +421,16 @@ class Program
         sb.AppendLine("        switch (opcode)");
         sb.AppendLine("        {");
         foreach (var inst in fdcbInstructions.OrderBy(i => i.Opcode)) {
+             // The DD/FD and CB prefix fetches are emitted by the handler
+             // preamble above, so their two cycle entries are dropped here.
+             // The ACTIONS must not be: these instructions carry a single
+             // action string, so Skip(2) discarded it and produced a case that
+             // only burned cycles -- every BIT/SET/RES/shift on (IX+d) was a
+             // silent no-op. Only skip when the actions are per-M-cycle.
              var skippedCycles = inst.Cycles.Skip(2).ToArray();
-             var skippedActions = inst.Actions.Skip(2).ToArray();
+             var skippedActions = inst.Actions.Length > 2
+                 ? inst.Actions.Skip(2).ToArray()
+                 : inst.Actions;
              var skippedInst = inst with { Cycles = skippedCycles, Actions = skippedActions };
              GenerateCase(sb, skippedInst);
         }
@@ -449,6 +465,14 @@ class Program
          sb.AppendLine("        }");
          sb.AppendLine("    }");
     }
+
+    /// <summary>
+    /// The undocumented DD/FD-CB forms also copy the result into a register.
+    /// Operand 6 is the plain (IX+d) form with no copy — and regs[6] is
+    /// "Read(HL)", which is not assignable, so the copy must be omitted at
+    /// generation time rather than guarded by a dead `if` in the output.
+    /// </summary>
+    static string IndexedCopy(int reg, string[] regs) => reg == 6 ? "" : $" {regs[reg]} = val;";
 
     static void GenerateCase(StringBuilder sb, Instruction inst) {
         sb.Append($"            case 0x{inst.Opcode:X2}: /* {inst.Mnemonic} */ {{ ");

@@ -7,12 +7,15 @@ public sealed partial class Cpu
         int carry = FlagC ? 1 : 0;
         int res = cur + val + carry;
         
+        ushort result = (ushort)(res & 0xFFFF);
+
         FlagN = false;
         FlagH = (((cur & 0x0FFF) + (val & 0x0FFF) + carry) & 0x1000) != 0;
         FlagPV = (((cur ^ res) & (val ^ res)) & 0x8000) != 0;
         FlagC = res > 0xFFFF;
-        
-        ushort result = (ushort)(res & 0xFFFF);
+        FlagS = (result & 0x8000) != 0;
+        FlagZ = result == 0;
+
         WZ = (ushort)(cur + 1);
         SetUndocumentedFlags((byte)(result >> 8));
         return result;
@@ -23,12 +26,15 @@ public sealed partial class Cpu
         int carry = FlagC ? 1 : 0;
         int res = cur - val - carry;
 
+        ushort result = (ushort)(res & 0xFFFF);
+
         FlagN = true;
         FlagH = (((cur & 0x0FFF) - (val & 0x0FFF) - carry) & 0x1000) != 0;
         FlagPV = (((cur ^ val) & (cur ^ res)) & 0x8000) != 0;
         FlagC = res < 0;
+        FlagS = (result & 0x8000) != 0;
+        FlagZ = result == 0;
 
-        ushort result = (ushort)(res & 0xFFFF);
         WZ = (ushort)(cur + 1);
         SetUndocumentedFlags((byte)(result >> 8));
         return result;

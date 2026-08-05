@@ -242,6 +242,49 @@ public class Zx128MachineTests
     }
 
     [Fact]
+    public void RealRoms_BootToTheEditorMenu()
+    {
+        // End-to-end: the 128 must reach its menu screen, not just run code.
+        // Skipped when the ROM images are absent, since they are gitignored.
+        string? rom0 = FindRepoRomPath("128-0.rom");
+        string? rom1 = FindRepoRomPath("128-1.rom");
+        if (rom0 is null || rom1 is null) return;
+
+        var machine = new Zx128Machine(File.ReadAllBytes(rom0), File.ReadAllBytes(rom1));
+        machine.Reset();
+        var sink = new CaptureSink();
+
+        for (int i = 0; i < 250; i++)
+        {
+            machine.RunFrame();
+            machine.RenderFrame(sink);
+        }
+
+        // The menu is drawn, so the bitmap must carry real content rather than
+        // the blank screen a crashed machine leaves behind.
+        var screen = machine.Banks[machine.Pager.ScreenBank];
+        int bitmapBytes = 0;
+        for (ushort a = 0; a < 0x1800; a++) if (screen.Read(a) != 0) bitmapBytes++;
+
+        Assert.True(bitmapBytes > 200,
+            $"the 128 menu should be drawn, but only {bitmapBytes} bitmap bytes are set");
+
+        // The menu uses several colours (rainbow logo, cyan selection bar).
+        Assert.True(new HashSet<uint>(sink.Frame).Count >= 4,
+            "the menu screen should use several colours");
+
+        // Still executing the editor in ROM 0, not crashed into a NOP slide.
+        Assert.Equal(0, machine.Pager.RomIndex);
+        Assert.True(machine.Cpu.SP > 0x1000, $"stack should be sane, was 0x{machine.Cpu.SP:X4}");
+    }
+
+    private sealed class CaptureSink : IVideoSink
+    {
+        public uint[] Frame = [];
+        public void SubmitFrame(ReadOnlySpan<uint> pixels, int width, int height) => Frame = pixels.ToArray();
+    }
+
+    [Fact]
     public void TwoRomConstructor_RejectsWrongSizes()
     {
         Assert.Throws<ArgumentException>(() => new Zx128Machine(new byte[0x4000], new byte[0x2000]));
