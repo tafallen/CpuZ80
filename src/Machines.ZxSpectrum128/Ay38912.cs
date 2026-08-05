@@ -89,6 +89,15 @@ public sealed class Ay38912 : IPortBus
     public byte In(ushort port)
     {
         if (!IsSelectPort(port)) return 0xFF;
+
+        // Registers 14 and 15 are the I/O ports, not storage. Register 7 bit 6
+        // sets port A's direction and bit 7 port B's; when a port is an input,
+        // reading its register returns the external pins rather than whatever
+        // was last written. On a 128 the RS232/keypad socket is normally empty,
+        // so those pins float high.
+        if (SelectedRegister == 14 && (_registers[7] & 0x40) == 0) return 0xFF;
+        if (SelectedRegister == 15 && (_registers[7] & 0x80) == 0) return 0xFF;
+
         return (byte)(_registers[SelectedRegister] & RegisterMask(SelectedRegister));
     }
 

@@ -95,10 +95,12 @@ public class Ay38912Tests
     [Fact]
     public void RegistersAreIndependent()
     {
+        // Registers 0-13 only: 14 and 15 are I/O ports and read the external
+        // pins rather than the latch unless configured as outputs.
         var ay = Chip();
-        for (int r = 0; r < 16; r++) Write(ay, r, (byte)(r * 0x11));
+        for (int r = 0; r < 14; r++) Write(ay, r, (byte)(r * 0x11));
 
-        for (int r = 0; r < 16; r++)
+        for (int r = 0; r < 14; r++)
         {
             byte expected = (byte)((r * 0x11) & Ay38912.RegisterMask(r));
             Assert.Equal(expected, Read(ay, r));
@@ -159,6 +161,53 @@ public class Ay38912Tests
         var ay = Chip();
         Write(ay, 0, 0x00);
         Assert.Equal(0xFF, ay.In(0xFFFE));
+    }
+
+    // ── I/O ports (registers 14 and 15) ──────────────────────────────────────
+
+    [Fact]
+    public void PortA_WhenAnInput_ReadsTheExternalPins_NotTheLatch()
+    {
+        // Register 7 bit 6 sets port A's direction. When it is 0 the port is an
+        // input, so reading register 14 returns the pins rather than whatever was
+        // last written. On a 128 the RS232/keypad socket is normally empty, so
+        // they float high.
+        var ay = Chip();
+        Write(ay, 7, 0x00);   // bit 6 clear -> port A is an input
+        Write(ay, 14, 0x00);  // latch a zero
+
+        Assert.Equal(0xFF, Read(ay, 14));
+    }
+
+    [Fact]
+    public void PortA_WhenAnOutput_ReadsBackTheLatch()
+    {
+        var ay = Chip();
+        Write(ay, 7, 0x40);   // bit 6 set -> port A is an output
+        Write(ay, 14, 0x5A);
+
+        Assert.Equal(0x5A, Read(ay, 14));
+    }
+
+    [Fact]
+    public void PortB_WhenAnInput_ReadsTheExternalPins()
+    {
+        // The 8912 does not bond port B at all, so it always reads as an input.
+        var ay = Chip();
+        Write(ay, 7, 0x00);
+        Write(ay, 15, 0x00);
+
+        Assert.Equal(0xFF, Read(ay, 15));
+    }
+
+    [Fact]
+    public void PortB_WhenAnOutput_ReadsBackTheLatch()
+    {
+        var ay = Chip();
+        Write(ay, 7, 0x80);   // bit 7 set -> port B is an output
+        Write(ay, 15, 0x3C);
+
+        Assert.Equal(0x3C, Read(ay, 15));
     }
 
     // ── Sound generation ─────────────────────────────────────────────────────
@@ -278,6 +327,8 @@ public class Ay38912Tests
         // register as a side effect, so asserting afterwards would see 15.
         Assert.Equal(0, ay.SelectedRegister);
 
-        for (int r = 0; r < 16; r++) Assert.Equal(0, Read(ay, r));
+        // 0-13 only: after reset register 7 is 0, so ports A and B are inputs
+        // and read as 0xFF rather than the cleared latch.
+        for (int r = 0; r < 14; r++) Assert.Equal(0, Read(ay, r));
     }
 }
