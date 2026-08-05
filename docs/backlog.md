@@ -542,47 +542,106 @@ Record the result in `tests/CpuZ80.Benchmarks/BASELINE.md`, replacing the entry
 currently marked "NOT USABLE". Sanity check: StdDev should be a low single-digit
 percentage of the mean, and `ZX80 RenderFrame` should sit near 1.9 µs.
 
-### FU-005 — The 128 crashes after the ROM memory test
+### FU-005 — The 128 reports "4 Out of memory" and crashes
 
-**Status:** open, blocking US-458. The parts are built and unit-tested; the
-machine does not yet boot to the 128 menu.
+**Status:** open, blocking US-458. Narrowed to a specific mechanism; root cause
+not yet identified.
 
-**What works.** Running the real `128-0.rom` / `128-1.rom`, the machine executes
-the ROM 0 startup correctly: the delay loop, then the RAM test paging banks
-6 → 3 → 0 through 0xC000. It then enables interrupts (IFF1, IM 1), pages ROM 1,
-and clears the screen — bank 5 ends with exactly 768 non-zero bytes, which is the
-attribute file, so `CLS` ran.
+#### What actually happens
 
-**What fails.** The bitmap area stays entirely zero: no menu text is ever drawn.
-After ~60 frames the CPU is executing zeroed RAM as a NOP slide — 2,000
-consecutive distinct PCs incrementing by one — with `SP` wound down near 0x0000
-from repeated interrupts pushing onto a trashed stack. It stays there
-indefinitely (verified to 600 frames / 12 s emulated).
+The machine boots much further than "it crashes" suggests. Memory sizing is
+**correct** — after startup `P_RAMT` = 0xFFFF and `RAMTOP` = 0xFF57, so the ROM
+found all 128K, and reads/writes through the 0x4000, 0x8000 and 0xC000 windows
+all verify.
 
-**Ruled out.** The AY answering 0xFFFE was found and fixed during this work (it
-ANDed a register value into the "read every keyboard row" port), but the crash is
-unchanged, so that was a separate real bug rather than this one.
+The failure is a genuine ROM error report, not a wild jump:
 
-**Not yet root-caused.** A last diagnostic that stepped the CPU directly was
-invalid — stepping bypasses `RunFrame`, so the machine never receives its 50 Hz
-interrupt and the trace is unrepresentative. Redo it driving `RunFrame` and
-sampling inside the frame.
+```
+ROM1 0x1F05  TEST-ROOM:  LD HL,(STKEND) / ADD HL,BC / SBC HL,SP / RET C
+ROM1 0x1F15              LD L,3 : JP 0x0055        -> report "4 Out of memory"
+ROM1 0x0055  ERROR-2:    LD (IY+0),L
+ROM1 0x0058              LD SP,(0x5C3D)   ; ERR_SP, which contains 0
+ROM1 0x005C              JP 0x16C5
+```
 
-**Where to look next.** The trace showed execution inside ROM 1 around
-0x3300-0x3450 (the 48K ROM calculator and block-move routines) shortly before the
-dive, with ROM 1 paged. The 128 editor runs with ROM 1 paged and calls ROM 0
-routines through a trampoline in RAM, so the paging trampoline is the prime
-suspect. Worth checking:
+`ERR_SP` is 0, so the error handler sets `SP` = 0, the stack unwinds into nothing
+and the CPU ends up sliding through zeroed RAM. The NOP slide is the aftermath,
+not the fault.
 
-- whether `0x7FFD` writes from `OUT (C),A` (BC = 0x7FFD) reach the pager — the
-  partial decode is tested, but not through the CPU's `OUT (C),r` path;
-- interrupt timing: the interrupt is asserted for 32 T-states from frame start,
-  which is a guess rather than a measured figure;
-- whether anything writes to the ROM window and is silently dropped when it
-  should hit RAM.
+TEST-ROOM is *right* to complain: at that moment `SP` = 0x5BEF while
+`STKEND` = 0x5CCE, so the stack is below the BASIC area.
 
-Unit tests cover each component in isolation; what is missing is a test that the
-composed machine reaches a known state from a real ROM. That test is US-458.
+#### Why SP is wrong
+
+ROM 0 switches ROMs with a stack-swapping trampoline — one stack per ROM context,
+swapped through the word at 0x5B81:
+
+```
+ROM0 0x1F45:  EX AF,AF' / DI / POP AF
+              LD (0x5B58),HL
+              LD HL,(0x5B81)
+              LD (0x5B81),SP     ; save current SP
+              LD SP,HL           ; switch to the other context's stack
+              ...
+              LD A,7 : CALL 0x1F3A
+ROM0 0x1F3A:  PUSH BC : LD BC,0x7FFD : OUT (C),A : LD (0x5B5C),A : POP BC : RET
+ROM0 0x1F20:  the mirror image, swapping back
+```
+
+Tracing SP shows the swap happening an **odd** number of times:
+
+```
+step 239,015  PC=0x0151  SP 0xFFFF -> 0x5BFF   (initial setup)
+step 239,298  PC=0x01A7  SP 0x5BFF -> 0xFF58   (main stack established)
+step 256,226  PC=0x1F52  SP 0xFF58 -> 0x5BFF   swap in
+step 256,399  PC=0x1F32  SP 0x5BFF -> 0xFF58   swap back
+step 256,415  PC=0x1F52  SP 0xFF58 -> 0x5BFF   swap in -- never returns
+```
+
+So BASIC ends up executing in the ROM-1 context while still on the ROM-0
+context's small stack at 0x5BFF. One trampoline entry does not complete.
+
+#### Ruled out by test
+
+- **`OUT (C),A` to 0x7FFD** — this is how the ROM actually pages, and the pager's
+  own tests call `Out()` directly, so it was the prime suspect. Verified working.
+- **`OUT (n),A` to 0x7FFD**, the other encoding. Works.
+- **`LD (nn),SP` / `LD SP,(nn)` / `LD SP,HL`** round-trip — the trampoline's stack
+  swap primitives. All work.
+- **The AY answering 0xFFFE** — a real bug found and fixed during this work, but
+  the crash is unchanged, so it was separate.
+
+`Zx128PagingViaCpuTests` covers these five, executed as Z80 code rather than by
+calling the devices directly.
+
+#### Still to investigate
+
+The trampoline manipulates `DI`/`EI`, `EX AF,AF'` and `PUSH AF`/`POP AF` while
+swapping stacks. Interrupt handling around that sequence is the strongest
+remaining suspect:
+
+- `Zx128Machine.RunFrame` asserts the interrupt for **32 T-states** from frame
+  start. That figure is a guess carried over from the 48K, not a measured value.
+  An interrupt accepted at the wrong moment inside the trampoline would leave the
+  stacks mismatched exactly as observed.
+- `EX AF,AF'` interaction with interrupt acceptance is worth checking against the
+  CPU tests — it is exercised there, but not in combination with an interrupt
+  arriving mid-sequence.
+- Compare the step at which the third swap happens against a reference emulator
+  to see whether it is reached at the same point in the frame.
+
+#### Methodology notes for whoever picks this up
+
+Two diagnostics gave misleading results before being corrected. Both are easy to
+repeat by accident:
+
+- **Stepping the CPU directly** (`machine.Step()` in a loop) starves it of the
+  50 Hz interrupt, because that is asserted by `RunFrame`. Replicate `RunFrame`'s
+  interrupt handling in any instrumented loop.
+- **Reading opcodes with `machine.ReadMemory()` while tracing** ticks the clock
+  3 T-states per call and applies contention, which badly distorts frame timing
+  and changes program behaviour. Trace `PC` only and decode opcodes offline from
+  the ROM image.
 
 ### FU-003 — Stop `RaylibHost` allocating on the audio path
 
