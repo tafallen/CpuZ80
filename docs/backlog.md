@@ -370,6 +370,24 @@ already owns US-50x.
   `Zx128MachineTests.RealRoms_BootToTheEditorMenu`, which skips when the
   gitignored ROM images are absent. Root cause in FU-005 below.
 
+- [ ] **US-460 — Close the last two ZEXALL failures**
+  ZEXALL now reports 65 OK and 2 errors, down from 5. The DD/FD-CB generator fix
+  cleared `bit n,(<ix,iy>+1)`, `shf/rot (<ix,iy>+1)` and `<set,res> n,(<ix,iy>+1)`
+  together; the flag fix cleared `<adc,sbc> hl,<bc,de,hl,sp>`. Still failing:
+
+  - `ld (nnnn),<ix,iy>` — `LD (nn),IX` / `LD (nn),IY`
+  - `<rrd,rld>` — `RRD` / `RLD`, most likely the S/Z/P-V flags computed from the
+    resulting accumulator, the same class of omission as the 16-bit ADC/SBC bug
+
+  Neither blocks the 128, which boots with both outstanding. Fix in
+  `CpuZ80.CodeGen`, never by editing `Cpu.Generated.cs`. Run the exerciser with
+  `dotnet run -c Release --project tests/CpuZ80.Exerciser`; it takes a while, so
+  redirect to a file rather than piping, or the output stays buffered.
+
+  **Worth wiring into CI.** AGENTS.md requires ZEXALL to pass, but nothing
+  enforced it, and two whole instruction groups were silently broken for as long
+  as it went unrun — see FU-005.
+
 - [ ] **US-459 — AY noise and envelope generators**
   Only the three tone channels are modelled. The noise generator (register 6,
   mixer bits 3-5) and the envelope generator (registers 11-13) are absent, and
