@@ -399,6 +399,48 @@ already owns US-50x.
 
 ---
 
+### Epic 4.6 — ZX Spectrum +2A / +2B / +3 / +3B
+
+Research and architecture: [zx-spectrum-plus3.md](./zx-spectrum-plus3.md).
+Checked against the sources rather than extrapolated from the 128 — several
+details differ in ways that assuming would have got wrong.
+
+- [x] **US-471 — Contention pattern into `UlaTiming`**
+  The delay sequence was a hardcoded `static readonly byte[]` in the ULA. It is
+  now part of the timing record, because the +2A/+3 uses 1,0,7,6,5,4,3,2 rather
+  than a shifted 6,5,4,3,2,1,0,0. Adds `UlaTiming.Spectrum2A`.
+
+- [x] **US-472 — I/O contention is now optional**
+  The +2A/+3 gate array contends only while MREQ is active, so I/O is not
+  contended. `UlaTiming.ContendsIo` defaults to true, leaving the 48K and 128
+  unchanged.
+
+- [x] **US-473 — `Plus3MemoryPager`**
+  Both paging ports, four ROMs, the four all-RAM configurations, and the
+  banks-4-to-7 contention rule.
+
+  Note the `0x7FFD` decode is **narrower** than the 128's: it requires A14 set as
+  well as A15 and A1 clear. Without that, every write to `0x1FFD` also lands in
+  the `0x7FFD` latch and corrupts the bank, ROM and screen bits — which is
+  exactly what happened when it was first implemented with the 128's rule.
+
+- [ ] **US-474 — `Plus3Machine` composition**
+  Eight banks, four ROMs from a 64K image or four 16K files, `UlaTiming.Spectrum2A`.
+
+- [ ] **US-475 — `Host.ZxSpectrumPlus3` runner**
+
+- [ ] **US-476 — uPD765A floppy controller and `.DSK` images (+3 only)**
+  Ports `0x2FFD` (main status) and `0x3FFD` (data). The +2A has no drive and the
+  +3 boots to its menu without one, so this is separate rather than a
+  prerequisite.
+
+  ⚠️ **No +2A/+3 ROM images are present**, so the end-to-end boot test will skip
+  exactly as the 128's did before its ROMs arrived. Until one runs, "it boots" is
+  unproven — the 128 showed that every component passing in isolation does not
+  imply the composition works.
+
+---
+
 ### Epic 5 — Amstrad CPC 464 / 6128
 
 The Amstrad CPC series features a 4MHz Z80A, the Amstrad Gate Array, a 6845 CRTC for video, and an AY-3-8912 for 3-channel sound. This epic focuses on the CPC 464 (64K) base model with 6128 (128K) expandability.

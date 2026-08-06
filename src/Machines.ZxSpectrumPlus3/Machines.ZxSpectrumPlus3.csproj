@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CpuZ80.Core\CpuZ80.Core.csproj" />
+    <ProjectReference Include="..\Machines.Common\Machines.Common.csproj" />
+    <ProjectReference Include="..\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
+    <ProjectReference Include="..\Machines.ZxSpectrum\Machines.ZxSpectrum.csproj" />
+    <ProjectReference Include="..\Machines.ZxSpectrum128\Machines.ZxSpectrum128.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -18,7 +18,6 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     private const byte EAR_Bit      = 0x40;
 
     private const byte OpenBus = 0xFF;
-    private static readonly byte[] ContentionTable = [ 6, 5, 4, 3, 2, 1, 0, 0 ];
 
     private readonly ZxSpectrumVideo   _video;
     private readonly BeeperDevice      _beeper;
@@ -177,6 +176,10 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
     // --- ICpuHost implementation ---
     public void OnPortAccess(ushort address, Cpu cpu)
     {
+        // The +2A/+3 gate array contends only while MREQ is active, so I/O is
+        // not contended there at all.
+        if (!Timing.ContendsIo) return;
+
         if ((address & 0x01) == 0 || (address >= 0x4000 && address <= 0x7FFF))
         {
             ApplyContention(cpu);
@@ -199,7 +202,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
             int lineCycle = (t - Timing.ContentionStart) % Timing.CyclesPerLine;
             if (lineCycle < 128)
             {
-                cpu.WaitCycles += ContentionTable[lineCycle % 8];
+                cpu.WaitCycles += Timing.ContentionPattern[lineCycle % 8];
             }
         }
     }
