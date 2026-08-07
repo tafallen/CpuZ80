@@ -136,10 +136,11 @@ will break.
 **Screen bank selection is unchanged but easy to lose.** In special mode the
 layout ignores `0x7FFD`'s bank bits, but bit 3 still picks the displayed bank.
 
-**We have no +2A/+3 ROM images.** Unit tests cover everything; the end-to-end
-boot test will skip, exactly as the 128's did before its ROMs arrived. Until one
-is run, "it boots" is unproven — and the 128 taught us that every component
-passing in isolation does not imply the composition works.
+**We had no +2A/+3 ROM images** when this was written, so "it boots" was
+unproven — and the 128 taught us that every component passing in isolation does
+not imply the composition works. The v4.1 set has since arrived and
+`RealRoms_BootToTheEditorMenu` confirms the machine reaches its menu. The images
+are gitignored, so the test skips where they are absent.
 
 **Do not assume the 128's contention rule.** `Zx128MemoryPager.IsContended` uses
 `(PagedBank & 1) != 0`. The +2A/+3 rule is `bank >= 4`, and in special mode the

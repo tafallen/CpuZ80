@@ -291,6 +291,42 @@ public class Zx128MachineTests
         Assert.Throws<ArgumentException>(() => new Zx128Machine(new byte[0x8000], new byte[0x4000]));
     }
 
+    [Fact]
+    public void Plus2Roms_BootToTheEditorMenu()
+    {
+        // The +2 (grey) is a 128 in a new case, so its ROM set runs here rather
+        // than on the +2A/+3. A second real ROM set is a genuinely independent
+        // check of the composition. Skipped when the image is absent.
+        string? path = FindRepoRomPath("plus2.rom");
+        if (path is null) return;
+
+        var machine = new Zx128Machine(File.ReadAllBytes(path));
+        machine.Reset();
+        var sink = new CaptureSink();
+
+        for (int i = 0; i < 250; i++)
+        {
+            machine.RunFrame();
+            machine.RenderFrame(sink);
+        }
+
+        var screen = machine.Banks[machine.Pager.ScreenBank];
+        int bitmapBytes = 0;
+        for (ushort a = 0; a < 0x1800; a++) if (screen.Read(a) != 0) bitmapBytes++;
+
+        Assert.True(bitmapBytes > 200,
+            $"the +2 menu should be drawn, but only {bitmapBytes} bitmap bytes are set");
+        Assert.True(new HashSet<uint>(sink.Frame).Count >= 4,
+            "the menu screen should use several colours");
+        Assert.Equal(0, machine.Pager.RomIndex);
+        Assert.True(machine.Cpu.SP > 0x1000, $"stack should be sane, was 0x{machine.Cpu.SP:X4}");
+    }
+
+    /// <summary>
+    /// Walks up from the test binary looking for a ROM image, checking each
+    /// directory and its immediate subdirectories — some sets live in named
+    /// folders at the repo root rather than loose.
+    /// </summary>
     private static string? FindRepoRomPath(string fileName)
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -298,6 +334,13 @@ public class Zx128MachineTests
         {
             string candidate = Path.Combine(dir.FullName, fileName);
             if (File.Exists(candidate)) return candidate;
+
+            foreach (var sub in dir.EnumerateDirectories())
+            {
+                candidate = Path.Combine(sub.FullName, fileName);
+                if (File.Exists(candidate)) return candidate;
+            }
+
             dir = dir.Parent;
         }
         return null;

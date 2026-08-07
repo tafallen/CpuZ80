@@ -424,8 +424,13 @@ details differ in ways that assuming would have got wrong.
   the `0x7FFD` latch and corrupts the bank, ROM and screen bits — which is
   exactly what happened when it was first implemented with the 128's rule.
 
-- [ ] **US-474 — `Plus3Machine` composition**
-  Eight banks, four ROMs from a 64K image or four 16K files, `UlaTiming.Spectrum2A`.
+- [x] **US-474 — `Plus3Machine` composition**
+  Eight banks, four ROMs from a 64K image or four 16K files, `UlaTiming.Spectrum2A`,
+  `Plus3PortBus`, and the pager's own contention rule injected into the ULA.
+
+  Verified end-to-end against the real v4.1 ROM set: the machine boots to the +3
+  editor menu. The +2 (grey) images in the repo are 128-architecture, so they
+  became a second real-ROM boot test for `Zx128Machine` instead.
 
 - [ ] **US-475 — `Host.ZxSpectrumPlus3` runner**
 
