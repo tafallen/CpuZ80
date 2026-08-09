@@ -457,15 +457,32 @@ details differ in ways that assuming would have got wrong.
   whole working copy. **A skipping test looks exactly like a passing one; check
   the duration.**
 
-- [ ] **US-476 — uPD765A floppy controller and `.DSK` images (+3 only)**
-  Ports `0x2FFD` (main status) and `0x3FFD` (data). The +2A has no drive and the
-  +3 boots to its menu without one, so this is separate rather than a
-  prerequisite.
+- [x] **US-476 — uPD765A floppy controller and `.DSK` images (+3 only)**
+  Research and architecture: [upd765a-fdc.md](./upd765a-fdc.md).
 
-  ⚠️ **No +2A/+3 ROM images are present**, so the end-to-end boot test will skip
-  exactly as the 128's did before its ROMs arrived. Until one runs, "it boots" is
-  unproven — the 128 showed that every component passing in isolation does not
-  imply the composition works.
+  `DiskImage` parses both `.DSK` variants; `Upd765a` implements the three-phase
+  command/execution/result state machine on ports `0x2FFD` and `0x3FFD`. Fitted
+  only when asked for — without it the machine is a +2A, which is what it was
+  before. The real ROM set still reaches its menu with the drive fitted, which
+  the +2A path did not prove.
+
+  Research corrected a mistake in the +2A/+3 notes: the disk motor is **bit 3**
+  of `0x1FFD`, not bit 1, and the printer strobe is bit 4, not bit 3. Bit 1 is
+  ignored in normal mode. Checked against the reference rather than
+  extrapolated, after the same class of error twice before.
+
+  ⚠️ **No real `.DSK` image has been loaded.** The tests build synthetic
+  images byte by byte, which pins the parser and the FDC to a known-correct
+  layout, but says nothing about real disks or other emulators' quirks. "+3 disk
+  support works" is not yet a claim that can be made — see US-477.
+
+- [ ] **US-477 — Load a real `.DSK` and boot a game**
+  The missing proof for US-476. Needs a disk image in the working copy.
+
+- [ ] **US-478 — Persist disk writes**
+  Writes land in the in-memory image and are lost on exit. A user who saves a
+  game and closes the emulator will reasonably call that a bug. The host warns,
+  which is a stopgap rather than a fix.
 
 ---
 

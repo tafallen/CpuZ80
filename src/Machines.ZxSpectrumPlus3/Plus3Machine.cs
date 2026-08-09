@@ -40,6 +40,12 @@ public sealed class Plus3Machine
     /// <summary>The AY-3-8912 on ports 0xFFFD / 0xBFFD.</summary>
     public Ay38912 Ay { get; }
 
+    /// <summary>
+    /// The floppy controller, or null when no drive is fitted — which makes this
+    /// machine a +2A rather than a +3.
+    /// </summary>
+    public Upd765a? Fdc { get; }
+
     private readonly AddressDecoder _bus;
     private readonly Plus3PortBus _ports;
     private readonly IAudioSink? _audioSink;
@@ -54,8 +60,9 @@ public sealed class Plus3Machine
         byte[] romImage,
         IPhysicalKeyboard? keyboard = null,
         IAudioSink? audio = null,
-        ITapeDevice? tape = null)
-        : this(SplitRoms(romImage), keyboard, audio, tape)
+        ITapeDevice? tape = null,
+        bool diskDrive = false)
+        : this(SplitRoms(romImage), keyboard, audio, tape, diskDrive)
     {
     }
 
@@ -67,7 +74,8 @@ public sealed class Plus3Machine
         byte[][] romImages,
         IPhysicalKeyboard? keyboard = null,
         IAudioSink? audio = null,
-        ITapeDevice? tape = null)
+        ITapeDevice? tape = null,
+        bool diskDrive = false)
     {
         if (romImages.Length != RomCount)
         {
@@ -104,14 +112,23 @@ public sealed class Plus3Machine
         Ay = new Ay38912();
         _audioSink = audio;
 
+        if (diskDrive) Fdc = new Upd765a();
+
         var joystick = keyboard is not null ? new KempstonJoystick(keyboard) : null;
-        _ports = new Plus3PortBus(Ula, Pager, Ay, joystick, () => Ula.FloatingBusValue);
+        _ports = new Plus3PortBus(Ula, Pager, Ay, joystick, () => Ula.FloatingBusValue, Fdc);
 
         Cpu = new Cpu(_bus, _ports, Ula);
         Ula.ConnectCpu(Cpu);
 
         // Bit 3 of 0x7FFD moves the display between bank 5 and bank 7.
         Pager.PagingChanged += () => Ula.SetScreenSource(Banks[Pager.ScreenBank]);
+
+        // The drive reports not-ready with the motor off, so the FDC takes it
+        // from the pager's decoded latch rather than sniffing the port itself.
+        if (Fdc is not null)
+        {
+            Pager.MotorChanged += () => Fdc.MotorOn = Pager.MotorOn;
+        }
     }
 
     private static byte[][] SplitRoms(byte[] romImage)
@@ -134,6 +151,7 @@ public sealed class Plus3Machine
         Pager.Reset();
         Ula.Reset();
         Ay.Reset();
+        Fdc?.Reset();
         _nextFrameTarget = Cpu.TotalCycles;
         _lastRenderTState = Cpu.TotalCycles;
     }

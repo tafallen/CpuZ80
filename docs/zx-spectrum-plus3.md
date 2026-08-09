@@ -49,9 +49,16 @@ what separates them, being set for `0x7FFD` and clear for `0x1FFD`.
 | Bit | Normal mode (bit 0 = 0) | Special mode (bit 0 = 1) |
 |---|---|---|
 | 0 | 0 = normal paging | 1 = all-RAM paging |
-| 1 | motor on (+3) | config select, low bit |
+| 1 | ignored | config select, low bit |
 | 2 | high bit of ROM select | config select, high bit |
-| 3 | printer strobe | printer strobe |
+| 3 | disk motor, 1 = on | disk motor, 1 = on |
+| 4 | printer strobe | printer strobe |
+
+An earlier revision of this table put the motor on bit 1 and the printer strobe
+on bit 3. Both were wrong, and the error came from extrapolating rather than
+checking — the same mistake as the AY data-port decode. The reference is
+explicit: bit 1 is *ignored* in normal mode, the motor is bit 3, the strobe is
+bit 4.
 
 ## 3. Special paging (all-RAM) configurations
 

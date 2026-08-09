@@ -84,6 +84,16 @@ public sealed class Plus3MemoryPager : IPortBus
     public int SpecialConfig { get; private set; }
 
     /// <summary>Raised after any paging change so the machine can re-point the display.</summary>
+    /// <summary>Disk motor, from bit 3 of 0x1FFD. The FDC reports not-ready while it is off.</summary>
+    public bool MotorOn { get; private set; }
+
+    /// <summary>
+    /// Raised when the motor bit changes. Separate from <see cref="PagingChanged"/>
+    /// because a write can move the motor without touching the memory map — and
+    /// does so even when paging is locked.
+    /// </summary>
+    public event Action? MotorChanged;
+
     public event Action? PagingChanged;
 
     public Plus3MemoryPager(AddressDecoder bus, Ram[] banks, Rom[] roms)
@@ -100,6 +110,7 @@ public sealed class Plus3MemoryPager : IPortBus
     public void Reset()
     {
         PagingLocked = false;
+        MotorOn = false;
         SpecialMode = false;
         SpecialConfig = 0;
         RomIndex = 0;
@@ -113,6 +124,20 @@ public sealed class Plus3MemoryPager : IPortBus
 
     public void Out(ushort port, byte value)
     {
+        // The disk motor and printer strobe are not paging functions, so the
+        // paging lock does not gate them — a machine that froze its drive motor
+        // by locking paging would be a strange design. Inferred, not stated:
+        // see docs/upd765a-fdc.md §2.
+        if ((port & Port1ffdMask) == Port1ffdValue)
+        {
+            bool motor = (value & 0x08) != 0;
+            if (motor != MotorOn)
+            {
+                MotorOn = motor;
+                MotorChanged?.Invoke();
+            }
+        }
+
         if (PagingLocked) return;
 
         bool changed = false;

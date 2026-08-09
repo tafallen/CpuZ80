@@ -26,7 +26,8 @@ internal sealed class Plus3PortBus : IPortBus
         Plus3MemoryPager pager,
         Ay38912 ay,
         IPortBus? joystick,
-        Func<byte> floatingBus)
+        Func<byte> floatingBus,
+        Upd765a? fdc = null)
     {
         _floatingBus = floatingBus;
         _decoder = new PortDecoder(PortDecoder.ConflictPolicy.LogicalAnd);
@@ -43,6 +44,14 @@ internal sealed class Plus3PortBus : IPortBus
         // AY-3-8912: A1 low, A14 selects register (0xFFFD) from data (0xBFFD).
         _decoder.MapMirror(0xC000, 0xC002, 0xFFFF, ay);
         _decoder.MapMirror(0x8000, 0xC002, 0xFFFF, ay);
+
+        // The floppy controller: status at 0x2FFD, data at 0x3FFD. Absent on a
+        // +2A, which is otherwise the same machine.
+        if (fdc is not null)
+        {
+            _decoder.MapMirror(0x2000, 0xF002, 0xFFFF, fdc);
+            _decoder.MapMirror(0x3000, 0xF002, 0xFFFF, fdc);
+        }
 
         if (joystick is not null)
         {

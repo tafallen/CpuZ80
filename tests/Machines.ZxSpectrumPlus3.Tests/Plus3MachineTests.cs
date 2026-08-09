@@ -188,6 +188,102 @@ public class Plus3MachineTests
         Assert.Equal(before, machine.Cpu.TotalCycles);
     }
 
+    // ── Disk drive ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NoDriveByDefault_WhichMakesItAPlus2A()
+    {
+        var machine = new Plus3Machine(CombinedRom());
+        machine.Reset();
+
+        Assert.Null(machine.Fdc);
+
+        // Nothing answers the controller's ports, so they float.
+        Assert.Equal(0xFF, machine.ReadPort(0x2FFD));
+    }
+
+    [Fact]
+    public void WithADrive_TheControllerAnswersItsPorts()
+    {
+        var machine = new Plus3Machine(CombinedRom(), diskDrive: true);
+        machine.Reset();
+
+        Assert.NotNull(machine.Fdc);
+        Assert.Equal(machine.Fdc!.MainStatus, machine.ReadPort(0x2FFD));
+        Assert.NotEqual(0xFF, machine.ReadPort(0x2FFD));
+    }
+
+    [Fact]
+    public void MotorBitIsBit3Of1ffd_NotBit1()
+    {
+        // Bit 1 is ignored in normal mode; the motor is bit 3. Getting this
+        // wrong leaves the drive permanently not-ready, and +3DOS just reports
+        // a disk error.
+        var machine = new Plus3Machine(CombinedRom(), diskDrive: true);
+        machine.Reset();
+
+        Assert.False(machine.Pager.MotorOn);
+
+        machine.WritePort(0x1FFD, 0x02);        // bit 1
+        Assert.False(machine.Pager.MotorOn);
+
+        machine.WritePort(0x1FFD, 0x08);        // bit 3
+        Assert.True(machine.Pager.MotorOn);
+        Assert.True(machine.Fdc!.MotorOn);
+
+        machine.WritePort(0x1FFD, 0x00);
+        Assert.False(machine.Fdc.MotorOn);
+    }
+
+    [Fact]
+    public void MotorStillRespondsWhilePagingIsLocked()
+    {
+        // The lock disables paging, not the whole port — a machine that froze
+        // its drive motor by locking paging would be a strange design.
+        var machine = new Plus3Machine(CombinedRom(), diskDrive: true);
+        machine.Reset();
+
+        machine.WritePort(0x7FFD, 0x20);        // lock paging
+        Assert.True(machine.Pager.PagingLocked);
+
+        machine.WritePort(0x1FFD, 0x08);
+        Assert.True(machine.Fdc!.MotorOn);
+    }
+
+    [Fact]
+    public void TheMotorBitDoesNotDisturbPaging()
+    {
+        var machine = new Plus3Machine(CombinedRom(), diskDrive: true);
+        machine.Reset();
+
+        machine.WritePort(0x1FFD, 0x04);        // ROM high bit
+        machine.WritePort(0x1FFD, 0x0C);        // same, plus the motor
+
+        Assert.True(machine.Pager.MotorOn);
+        Assert.Equal(2, machine.Pager.RomIndex);
+        Assert.False(machine.Pager.SpecialMode);
+    }
+
+    [Fact]
+    public void ADiskCanBeReadThroughTheMachinesPorts()
+    {
+        var machine = new Plus3Machine(CombinedRom(), diskDrive: true);
+        machine.Reset();
+        machine.Fdc!.InsertDisk(0, new DiskImage(DskBuilder.Standard()));
+        machine.WritePort(0x1FFD, 0x08);        // motor on
+
+        // Read Data from track 0, sector 0x41.
+        foreach (byte b in new byte[] { 0x46, 0x00, 0, 0, 0x41, 2, 0x49, 0x2A, 0xFF })
+        {
+            machine.WritePort(0x3FFD, b);
+        }
+
+        var data = new byte[DskBuilder.SectorSize];
+        for (int i = 0; i < data.Length; i++) data[i] = machine.ReadPort(0x3FFD);
+
+        Assert.All(data, b => Assert.Equal(DskBuilder.FillFor(0, 0x41), b));
+    }
+
     // ── Real ROMs ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -239,6 +335,35 @@ public class Plus3MachineTests
         Assert.True(new HashSet<uint>(sink.Frame).Count >= 4,
             "the menu screen should use several colours");
 
+        Assert.True(machine.Cpu.SP > 0x1000, $"stack should be sane, was 0x{machine.Cpu.SP:X4}");
+    }
+
+    [Fact]
+    public void RealRoms_StillBootWithADriveFitted()
+    {
+        // Fitting the controller gives +3DOS something to talk to during
+        // startup, and a controller that answers wrongly hangs it. The +2A path
+        // booting proves nothing about the +3 path.
+        string? path = FindRepoRom("plus341.rom");
+        if (path is null) return;
+
+        var machine = new Plus3Machine(File.ReadAllBytes(path), diskDrive: true);
+        machine.Reset();
+        machine.Fdc!.InsertDisk(0, new DiskImage(DskBuilder.Standard()));
+
+        var sink = new CaptureSink();
+        for (int i = 0; i < 250; i++)
+        {
+            machine.RunFrame();
+            machine.RenderFrame(sink);
+        }
+
+        var screen = machine.Banks[machine.Pager.ScreenBank];
+        int bitmapBytes = 0;
+        for (ushort a = 0; a < 0x1800; a++) if (screen.Read(a) != 0) bitmapBytes++;
+
+        Assert.True(bitmapBytes > 200,
+            $"the +3 should still reach its menu with a drive fitted, only {bitmapBytes} bitmap bytes are set");
         Assert.True(machine.Cpu.SP > 0x1000, $"stack should be sane, was 0x{machine.Cpu.SP:X4}");
     }
 
