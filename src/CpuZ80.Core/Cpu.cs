@@ -164,7 +164,46 @@ public sealed partial class Cpu
         WZ          = 0;
     }
 
+    /// <summary>
+    /// When set, every instruction is padded so it ends on a 4 T-state boundary.
+    /// </summary>
+    /// <remarks>
+    /// The Amstrad CPC's Gate Array holds the Z80's READY line so that no memory
+    /// access completes off a microsecond boundary. The visible consequence is
+    /// that every instruction takes a multiple of 4 T-states — a documented
+    /// 7 T-state instruction takes 8 on a CPC.
+    ///
+    /// This models the effect at instruction granularity rather than stretching
+    /// each M-cycle individually. The two agree for every instruction built from
+    /// 4- and 3-T-state M-cycles, which is nearly all of them, but they diverge
+    /// where an instruction contains a 5-T-state cycle: stretching per M-cycle
+    /// would round that to 8, while this rounds the instruction total. Since a
+    /// host observes only the total, and per-M-cycle stretching of internal
+    /// cycles is not what the Gate Array does, the instruction-level rule is
+    /// both simpler and the better match.
+    ///
+    /// Off by default. The Spectrum machines must be unaffected, and their
+    /// timing tests are the guard. See docs/amstrad-cpc.md §7.
+    /// </remarks>
+    public bool AlignInstructionsTo4TStates { get; set; }
+
     public void Step()
+    {
+        if (!AlignInstructionsTo4TStates)
+        {
+            StepInstruction();
+            return;
+        }
+
+        StepInstruction();
+
+        // Alignment is to an absolute boundary, not a relative one. Once every
+        // instruction ends on a multiple of 4, the next one starts there too.
+        ulong overshoot = TotalCycles & 3;
+        if (overshoot != 0) TotalCycles += 4 - overshoot;
+    }
+
+    private void StepInstruction()
     {
         if (_nmiPending)
         {

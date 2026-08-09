@@ -506,7 +506,7 @@ Research changed this plan in four ways, all recorded in the doc:
   Data bits 7-6 select PENR/INKR/**RMR**/**MMR** — `10` is the ROM and mode
   register, `11` is RAM banking. One source has these swapped.
 
-- [ ] **US-500 — 4 T-state memory access alignment**
+- [x] **US-500 — 4 T-state memory access alignment**
   The Gate Array inserts wait states so every access completes on a microsecond
   boundary, making all instruction timings round up to a multiple of 4. Uses the
   existing `WaitCycles` mechanism but for a different reason than Spectrum
@@ -519,6 +519,18 @@ Research changed this plan in four ways, all recorded in the doc:
   Proven on its own before any video work: a timing error underneath a
   half-working display is close to undiagnosable, and this session already lost
   hours to a Spectrum boot failure that turned out to be two CPU bugs.
+
+  Implemented as `Cpu.AlignInstructionsTo4TStates`, off by default. Rounds each
+  instruction's total up to a multiple of 4 rather than stretching each M-cycle
+  individually. The two agree for every instruction built from 4- and
+  3-T-state M-cycles, which is nearly all of them; they diverge where an
+  instruction contains a 5-T-state cycle. Since a host observes only the total,
+  and the Gate Array does not stretch internal cycles, the instruction-level
+  rule is the better match as well as the simpler one — but it is an
+  approximation and is documented as one.
+
+  Padding is measured against an absolute boundary, not a relative one, so it
+  cannot drift. ZEXALL still passes and the Spectrum machines are unchanged.
 
 **US-501 — Machines.AmstradCPC project skeleton**
 Establish the Amstrad CPC motherboard compositor and memory map. The CPC 464 has a complex memory layout where 64K RAM is contiguous, but the OS ROM (Lower) and BASIC/DOS ROMs (Upper) are banked in/out of the Z80's address space.
