@@ -488,7 +488,37 @@ details differ in ways that assuming would have got wrong.
 
 ### Epic 5 — Amstrad CPC 464 / 6128
 
+Research and architecture: [amstrad-cpc.md](./amstrad-cpc.md).
+
 The Amstrad CPC series features a 4MHz Z80A, the Amstrad Gate Array, a 6845 CRTC for video, and an AY-3-8912 for 3-channel sound. This epic focuses on the CPC 464 (64K) base model with 6128 (128K) expandability.
+
+Research changed this plan in four ways, all recorded in the doc:
+
+- **US-500 goes in front** — the Gate Array aligns every memory access to a
+  4 T-state boundary, which is a CPU-core change rather than a peripheral and
+  the largest risk in the epic.
+- **US-504 and US-507 shrink to reuse.** The CPC's PSG is the same AY-3-8912
+  already implemented, and its FDC is the same uPD765A with the same `.DSK`
+  format already implemented for the +3. Neither needs a new class.
+- **The ROM images carry a 128-byte AMSDOS header** and are not raw dumps, so
+  US-501 must strip it. Loading them as-is misaligns everything by 128 bytes.
+- **Gate Array register selection was contradicted between two sources.**
+  Data bits 7-6 select PENR/INKR/**RMR**/**MMR** — `10` is the ROM and mode
+  register, `11` is RAM banking. One source has these swapped.
+
+- [ ] **US-500 — 4 T-state memory access alignment**
+  The Gate Array inserts wait states so every access completes on a microsecond
+  boundary, making all instruction timings round up to a multiple of 4. Uses the
+  existing `WaitCycles` mechanism but for a different reason than Spectrum
+  contention: not "this address is slow" but "this access must finish on a
+  boundary".
+
+  Behind a flag — the Spectrum machines must be unaffected, and their timing
+  tests are the guard. Related to FU-004, which may need doing first.
+
+  Proven on its own before any video work: a timing error underneath a
+  half-working display is close to undiagnosable, and this session already lost
+  hours to a Spectrum boot failure that turned out to be two CPU bugs.
 
 **US-501 — Machines.AmstradCPC project skeleton**
 Establish the Amstrad CPC motherboard compositor and memory map. The CPC 464 has a complex memory layout where 64K RAM is contiguous, but the OS ROM (Lower) and BASIC/DOS ROMs (Upper) are banked in/out of the Z80's address space.
@@ -498,8 +528,16 @@ Establish the Amstrad CPC motherboard compositor and memory map. The CPC 464 has
         - **Lower ROM**: 16K at `$0000-$3FFF`.
         - **Upper ROM**: 16K at `$C000-$FFFF` (supports up to 252 different ROMs via banking).
     - Implement the `Reset()` logic: PC = `$0000`, 4MHz clock frequency.
+    - **Strip the 128-byte AMSDOS header** from ROM images. `Z80CPC.ROM` is
+      32,896 bytes (OS + BASIC 1.1) and `Z80DISK.ROM` is 16,512 (AMSDOS); the
+      excess is a header, and loading it as payload misaligns everything.
+      Identifiable by file type 2 at offset `&12` and the logical length at `&18`.
+    - The eight RAM configurations, **including config 3**, whose `&4000` holds
+      base bank 3 rather than bank 1. It cannot be derived from the others and
+      has to be a lookup table.
 - **Acceptance**:
     - `AmstradCpcMachine` can be instantiated with OS and BASIC ROM images.
+    - A ROM image with an AMSDOS header and one without both load correctly.
     - Tests verify that `ReadMemory` returns ROM bytes when banking is enabled, and RAM bytes when disabled.
     - CPU `TotalCycles` advances at exactly 4 T-states per µs (4.0 MHz).
 
@@ -511,6 +549,10 @@ Implement the custom Amstrad Gate Array (the "brain"). It manages the 27-color p
         - **PEN Selection**: Select which of the 16 palette entries (or border) is being modified.
         - **Color Assignment**: Map one of the 27 hardware colors to the selected PEN.
         - **ROM/RAM Banking**: Control the visibility of Lower and Upper ROMs.
+        - Register select is data bits 7-6: `00` PENR, `01` INKR, `10` RMR,
+          `11` MMR. Two sources disagree on this; see the doc.
+        - **The RMR ROM enables are active low** — 0 enables. Inverting them maps
+          RAM where the OS expects ROM and the machine dies immediately.
     - Implement the **HSYNC Interrupt Counter**:
         - Count HSYNC signals from the CRTC.
         - Assert `INT` every 52 scanlines.
@@ -537,10 +579,12 @@ Implement the video generation using the 6845 CRTC. The CPC utilizes the CRTC to
 
 **US-504 — PSG AY-3-8912 Audio**
 Implement the 3-channel sound generator. The AY chip provides music, sound effects, and 8-bit I/O ports. It is accessed indirectly via the 8255 PPI.
+
+**Reuse `Machines.ZxSpectrum128.Ay38912` rather than writing a new class** — it
+is the same chip, and it already has working tone, noise and envelope
+generators (US-459). The work here is the PPI plumbing, not the sound chip.
 - **Tasks**:
-    - Create `Ay38912` chip class.
-    - Implement 3 square-wave oscillators with 12-bit period precision.
-    - Implement the noise generator and programmable envelopes.
+    - Wire the existing `Ay38912` behind the PPI instead of a direct port.
     - Resample the 3-channel analog-mixed output to 44.1kHz 16-bit mono/stereo.
 - **Acceptance**:
     - Verified by playing a `.YM` or BASIC music routine and asserting frequency accuracy.
@@ -571,11 +615,13 @@ Implement the tape bitstreaming logic for the CPC 464. The Amstrad uses a freque
 
 **US-507 — FDC 765: Disk Controller (.DSK)**
 Model the NEC µPD765 Floppy Disk Controller (FDC) used in the CPC 6128 and DDI-1 expansion. This is a complex command-driven chip.
+**Reuse `Machines.ZxSpectrumPlus3.Upd765a` and `DiskImage` rather than writing a
+new controller** — the CPC uses the same uPD765A and the same `.DSK` format as
+the +3. The work here is the port decoding and the AMSDOS ROM, not the FDC.
 - **Tasks**:
-    - Create `Nec765Fdc` chip class.
-    - Implement the command-state machine (Specify, Seek, Read Sector, etc.).
-    - Support the **.DSK** (Extended DSK) image format.
-    - Map Port `$FBxx` for FDC status and data.
+    - Move `Upd765a` and `DiskImage` somewhere both machines can reference, or
+      reference the +3 project directly.
+    - Map Port `$FBxx` for FDC status and data, and `$FA7E` for the motor.
 - **Acceptance**:
     - `|DISC` and `CAT` commands successfully list and load files from a virtual disk image.
 
