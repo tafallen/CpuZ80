@@ -432,7 +432,17 @@ details differ in ways that assuming would have got wrong.
   editor menu. The +2 (grey) images in the repo are 128-architecture, so they
   became a second real-ROM boot test for `Zx128Machine` instead.
 
-- [ ] **US-475 — `Host.ZxSpectrumPlus3` runner**
+- [x] **US-475 — `Host.ZxSpectrumPlus3` runner**
+  `zxplus3`, taking either a 64K image via `--rom` or four 16K images via
+  `--rom0`..`--rom3`. The four are ordered by their flag rather than by position,
+  so a mis-ordered command line is an error instead of a scrambled machine.
+
+  While wiring this up the ROM images turned out to have been reorganised into
+  `roms/`, which silently disarmed both real-ROM boot tests — they skip when the
+  image is absent, so they still passed, in milliseconds. The finders were
+  replaced with a shared `tests/TestSupport/RomLocator.cs` that searches the
+  whole working copy. **A skipping test looks exactly like a passing one; check
+  the duration.**
 
 - [ ] **US-476 — uPD765A floppy controller and `.DSK` images (+3 only)**
   Ports `0x2FFD` (main status) and `0x3FFD` (data). The +2A has no drive and the

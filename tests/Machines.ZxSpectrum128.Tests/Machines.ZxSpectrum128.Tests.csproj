@@ -26,4 +26,8 @@
     <ProjectReference Include="..\..\src\Machines.Sinclair.Common\Machines.Sinclair.Common.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\TestSupport\RomLocator.cs" Link="TestSupport\RomLocator.cs" />
+  </ItemGroup>
+
 </Project>

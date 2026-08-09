@@ -1,3 +1,4 @@
+using CpuZ80.TestSupport;
 using Xunit;
 using Machines.Common;
 using Machines.ZxSpectrum;
@@ -322,27 +323,5 @@ public class Zx128MachineTests
         Assert.True(machine.Cpu.SP > 0x1000, $"stack should be sane, was 0x{machine.Cpu.SP:X4}");
     }
 
-    /// <summary>
-    /// Walks up from the test binary looking for a ROM image, checking each
-    /// directory and its immediate subdirectories — some sets live in named
-    /// folders at the repo root rather than loose.
-    /// </summary>
-    private static string? FindRepoRomPath(string fileName)
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null)
-        {
-            string candidate = Path.Combine(dir.FullName, fileName);
-            if (File.Exists(candidate)) return candidate;
-
-            foreach (var sub in dir.EnumerateDirectories())
-            {
-                candidate = Path.Combine(sub.FullName, fileName);
-                if (File.Exists(candidate)) return candidate;
-            }
-
-            dir = dir.Parent;
-        }
-        return null;
-    }
+    private static string? FindRepoRomPath(string fileName) => RomLocator.Find(fileName);
 }
