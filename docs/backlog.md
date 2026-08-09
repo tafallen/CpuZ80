@@ -532,6 +532,31 @@ Research changed this plan in four ways, all recorded in the doc:
   Padding is measured against an absolute boundary, not a relative one, so it
   cannot drift. ZEXALL still passes and the Spectrum machines are unchanged.
 
+- [x] **US-501 to US-503, US-505 — the CPC boots to its BASIC prompt** ✅
+  `Machines.AmstradCpc` with `CpcMemory`, `AmstradGateArray`, `Mc6845`,
+  `CpcVideo`, `Ppi8255`, `CpcKeyboard` and `CpcMachine`, plus a `cpc` host.
+  A real 6128 ROM set reaches the banner and the `Ready` prompt, in mode 1,
+  yellow on blue.
+
+  Three bugs found while getting there, all of which looked like something else:
+
+  - **INT was never cleared.** The Gate Array holds INT until acknowledged;
+    leaving it asserted re-entered the handler the instant it returned, so the
+    machine spun in the ISR forever — with a healthy stack and a plausible PC,
+    which is exactly why it did not look like a crash. Fixed properly by adding
+    `ICpuHost.OnInterruptAcknowledged`, so a bare `Step()` loop is correct too
+    rather than only the frame loop.
+  - **The canvas was sized for mode 1's 320 pixels** rather than 640, clipping
+    the right-hand half of every line. A "some pixels are lit" assertion did not
+    notice; a test that the copyright line reaches past halfway does.
+  - **The video address generation was wrong.** MA and RA map to the RAM address
+    in a specific scramble; the first attempt invented one that produced
+    plausible-looking garbage.
+
+  Still to do: US-504 (audio through the PPI), US-506 (tape), US-507 (disk),
+  US-508 (joystick). The banner proves the memory map, Gate Array, CRTC and
+  video path; it does not exercise banking, disk or sound.
+
 **US-501 — Machines.AmstradCPC project skeleton**
 Establish the Amstrad CPC motherboard compositor and memory map. The CPC 464 has a complex memory layout where 64K RAM is contiguous, but the OS ROM (Lower) and BASIC/DOS ROMs (Upper) are banked in/out of the Z80's address space.
 - **Tasks**:

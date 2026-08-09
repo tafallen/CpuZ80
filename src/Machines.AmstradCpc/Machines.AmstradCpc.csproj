@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CpuZ80.Core\CpuZ80.Core.csproj" />
+    <ProjectReference Include="..\Machines.Common\Machines.Common.csproj" />
+    <!-- The CPC's PSG is the same AY-3-8912 and its FDC the same uPD765A. -->
+    <ProjectReference Include="..\Machines.ZxSpectrum128\Machines.ZxSpectrum128.csproj" />
+    <ProjectReference Include="..\Machines.ZxSpectrumPlus3\Machines.ZxSpectrumPlus3.csproj" />
+  </ItemGroup>
+
+</Project>

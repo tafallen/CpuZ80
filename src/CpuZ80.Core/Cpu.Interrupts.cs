@@ -17,6 +17,9 @@ public sealed partial class Cpu
         IFF2 = false;
         Tick(2); // interrupt acknowledge cycles
 
+        // A host holding INT asserted until acknowledged clears it here.
+        _host.OnInterruptAcknowledged(this);
+
         switch (_interruptMode)
         {
             case 0:
