@@ -93,7 +93,12 @@ public sealed class CpcMachine : ICpuHost
 
         // The CPU boots in interrupt mode 1 with the lower ROM paged in.
         _nextHSync = Cpu.TotalCycles + CyclesPerScanline;
-        _frameEnd = Cpu.TotalCycles + FrameCycles;
+
+        // Not TotalCycles + FrameCycles: RunFrame adds a frame before running,
+        // so pre-adding one here makes the first frame run twice as long as
+        // every other one.
+        _frameEnd = Cpu.TotalCycles;
+        _lastAudioTState = Cpu.TotalCycles;
     }
 
     public byte ReadMemory(ushort address) => Cpu.ReadMemory(address);
@@ -136,10 +141,35 @@ public sealed class CpcMachine : ICpuHost
         Ppi.VSync = false;
     }
 
+    /// <summary>The PSG is clocked at 1 MHz, a quarter of the CPU clock.</summary>
+    public const int PsgClockHz = 1_000_000;
+
+    private const int SampleRate = 44_100;
+
+    private readonly short[] _audioBuffer = new short[2048];
+    private ulong _lastAudioTState;
+
     public void RenderFrame(IVideoSink sink)
     {
         Video.Render(sink);
-        _audio?.SubmitSamples([], 44100);
+
+        if (_audio is null) return;
+
+        ulong elapsed = Cpu.TotalCycles - _lastAudioTState;
+        _lastAudioTState = Cpu.TotalCycles;
+        if (elapsed == 0) return;
+
+        int sampleCount = (int)Math.Min((ulong)_audioBuffer.Length, elapsed * SampleRate / ClockHz);
+        if (sampleCount <= 0) return;
+
+        var span = _audioBuffer.AsSpan(0, sampleCount);
+
+        // Render expects PSG clock cycles, not CPU T-states. The CPC divides the
+        // 4 MHz CPU clock by four to reach the PSG's 1 MHz, and passing T-states
+        // straight through would run every channel four times too fast.
+        Psg.Render(span, elapsed / (ClockHz / PsgClockHz));
+
+        _audio.SubmitSamples(span, SampleRate);
     }
 
     // ── ICpuHost ─────────────────────────────────────────────────────────────

@@ -614,7 +614,20 @@ Implement the video generation using the 6845 CRTC. The CPC utilizes the CRTC to
     - All three modes render bit-perfect patterns compared to hardware.
     - Hardware scrolling (via CRTC registers 12/13) works correctly.
 
-**US-504 — PSG AY-3-8912 Audio**
+- [x] **US-504 — CPC audio through the PPI** ✅
+  The existing `Ay38912` wired behind the PPI, rendered to `IAudioSink` at
+  44.1 kHz. The PSG has no port of its own here: values go to PPI port A and
+  port C's top two bits carry BDIR and BC1.
+
+  **The PSG is clocked at 1 MHz, a quarter of the CPU clock.** Passing CPU
+  T-states straight through would run every channel four times too fast, so a
+  test measures the edge rate of a known tone period and fails if it is.
+
+  Also fixed a real bug this found: `Reset` pre-added a frame that `RunFrame`
+  then added again, so the first frame after reset ran twice as long as every
+  other one.
+
+**US-504 (original plan) — PSG AY-3-8912 Audio**
 Implement the 3-channel sound generator. The AY chip provides music, sound effects, and 8-bit I/O ports. It is accessed indirectly via the 8255 PPI.
 
 **Reuse `Machines.ZxSpectrum128.Ay38912` rather than writing a new class** — it
@@ -809,6 +822,25 @@ bulk-copy spans rather than moving one sample at a time.
 **Note on verification:** `RaylibHost` calls `InitWindow` and `InitAudioDevice`,
 so it cannot be exercised headlessly — this change cannot be covered by the test
 suite and needs a manual run with audio.
+
+### FU-006 — The 128 and +3 clock the AY from the Z80 clock
+
+`Zx128Machine.RenderFrame` and `Plus3Machine.RenderFrame` both call
+`Ay.Render(span, elapsed)` where `elapsed` is Z80 T-states at 3.5469 MHz. The
+AY expects its own clock cycles, and `Ay38912.ClockHz` is 1,773,400 — half the
+CPU clock. Every channel therefore runs at twice its true rate and all 128 and
++3 music plays an octave too high.
+
+Found while implementing the CPC's audio, where the same mistake would have
+been a factor of four. The CPC divides correctly; these two do not.
+
+**Why:** it is a one-line fix in each (`elapsed / 2`), but it changes the pitch
+of every existing 128 and +3 tune, so it belongs in its own change with its own
+listening check rather than riding along with CPC work.
+
+**How to apply:** divide by the CPU-to-PSG ratio at the call site, as
+`CpcMachine.RenderFrame` does, and add a tone-period edge-rate test like
+`AudioTests.ThePsgIsClockedAtAQuarterOfTheCpuClock`.
 
 ### FU-004 — Wait states from an instruction's final memory access are deferred
 
