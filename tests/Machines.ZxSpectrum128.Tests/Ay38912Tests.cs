@@ -315,6 +315,219 @@ public class Ay38912Tests
         Assert.True(PeakWithMixer(0x38) > PeakWithMixer(0x3E)); // all three vs one
     }
 
+    // ── Noise ────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void NoiseOnlyChannelProducesOutput()
+    {
+        // Mixer 0x37: channel A noise enabled (bit 3 clear), all tone disabled.
+        // Before the noise generator existed this channel was silent, because a
+        // disabled tone was treated as silencing the whole channel.
+        var ay = Chip();
+        Write(ay, 6, 0x05);   // noise period
+        Write(ay, 7, 0x37);
+        Write(ay, 8, 0x0F);
+
+        short[] buffer = new short[2000];
+        ay.Render(buffer, 100000);
+
+        Assert.Contains(buffer, s => s != 0);
+
+        int edges = 0;
+        for (int i = 1; i < buffer.Length; i++) if (buffer[i] != buffer[i - 1]) edges++;
+        Assert.True(edges > 50, $"noise should switch level constantly, saw {edges} edges");
+    }
+
+    [Fact]
+    public void NoiseIsNotPeriodicOverAShortWindow()
+    {
+        // A square wave repeats; the LFSR should not. This distinguishes real
+        // noise from a tone wired to the noise bit.
+        var ay = Chip();
+        Write(ay, 6, 0x01);
+        Write(ay, 7, 0x37);
+        Write(ay, 8, 0x0F);
+
+        short[] buffer = new short[512];
+        ay.Render(buffer, 200000);
+
+        // Count runs of equal samples. A square wave has uniform run lengths;
+        // the LFSR produces a spread of them.
+        var runLengths = new HashSet<int>();
+        int run = 1;
+        for (int i = 1; i < buffer.Length; i++)
+        {
+            if (buffer[i] == buffer[i - 1]) run++;
+            else { runLengths.Add(run); run = 1; }
+        }
+
+        Assert.True(runLengths.Count >= 3,
+            $"noise should give varied run lengths, saw {runLengths.Count}");
+    }
+
+    [Fact]
+    public void NoiseLfsrNeverLocksAtZero()
+    {
+        // An all-zero shift register would feed back zero forever and go silent.
+        var ay = Chip();
+        Write(ay, 6, 0x01);
+        Write(ay, 7, 0x37);
+        Write(ay, 8, 0x0F);
+
+        short[] buffer = new short[4000];
+        for (int i = 0; i < 20; i++) ay.Render(buffer, 100000);
+
+        Assert.Contains(buffer, s => s != 0);
+    }
+
+    [Fact]
+    public void ToneAndNoiseTogetherAreGatedByBoth()
+    {
+        // Both sources on one channel are ANDed, so the result is quieter than
+        // either alone rather than louder.
+        static int NonZeroSamples(byte mixer, byte noisePeriod)
+        {
+            var ay = Chip();
+            Write(ay, 0, 0x40);
+            Write(ay, 6, noisePeriod);
+            Write(ay, 7, mixer);
+            Write(ay, 8, 0x0F);
+
+            short[] buffer = new short[4000];
+            ay.Render(buffer, 200000);
+            return buffer.Count(s => s != 0);
+        }
+
+        int toneOnly = NonZeroSamples(0x3E, 0x05);      // tone A only
+        int both     = NonZeroSamples(0x36, 0x05);      // tone A and noise A
+
+        Assert.True(both < toneOnly,
+            $"ANDing noise into the tone should cut output, tone={toneOnly} both={both}");
+    }
+
+    // ── Envelope ─────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void EnvelopeModeUsesTheEnvelopeRatherThanFullVolume()
+    {
+        // Volume bit 4 hands amplitude to the envelope. It used to be pinned at
+        // full volume, so a decaying note played as a flat blast.
+        var ay = Chip();
+        Write(ay, 0, 0x10);
+        Write(ay, 7, 0x3E);
+        Write(ay, 11, 0x00);
+        Write(ay, 12, 0x02);   // slow-ish envelope
+        Write(ay, 13, 0x00);   // shape 0: one ramp down, then silence
+        Write(ay, 8, 0x10);    // channel A in envelope mode
+
+        short[] first = new short[1000];
+        short[] later = new short[1000];
+        ay.Render(first, 200000);
+        for (int i = 0; i < 20; i++) ay.Render(later, 200000);
+
+        int peakFirst = first.Max(s => Math.Abs((int)s));
+        int peakLater = later.Max(s => Math.Abs((int)s));
+
+        Assert.True(peakFirst > 0, "the envelope should start audible");
+        Assert.True(peakLater < peakFirst,
+            $"shape 0 should decay to silence, start={peakFirst} end={peakLater}");
+    }
+
+    [Theory]
+    // Shapes without the continue bit all finish at silence, whichever way they ran.
+    [InlineData(0x00)] [InlineData(0x03)] [InlineData(0x04)] [InlineData(0x07)]
+    // Shape 9 decays and holds at 0; shape 15 rises then drops to 0.
+    [InlineData(0x09)] [InlineData(0x0F)]
+    public void ShapesThatEndInSilenceReachZero(byte shape)
+    {
+        var ay = Chip();
+        Write(ay, 11, 0x20);
+        Write(ay, 12, 0x00);
+        Write(ay, 13, shape);
+
+        RunEnvelope(ay, 40);
+
+        Assert.Equal(0, ay.EnvelopeLevel);
+    }
+
+    [Theory]
+    // Shape 11 decays then holds at maximum; shape 13 rises and holds there.
+    [InlineData(0x0B)] [InlineData(0x0D)]
+    public void ShapesThatHoldHighReachMaximum(byte shape)
+    {
+        var ay = Chip();
+        Write(ay, 11, 0x20);
+        Write(ay, 12, 0x00);
+        Write(ay, 13, shape);
+
+        RunEnvelope(ay, 40);
+
+        Assert.Equal(15, ay.EnvelopeLevel);
+    }
+
+    [Theory]
+    // The continuing shapes never settle: 8 and 12 repeat, 10 and 14 alternate.
+    [InlineData(0x08)] [InlineData(0x0A)] [InlineData(0x0C)] [InlineData(0x0E)]
+    public void ContinuingShapesKeepMoving(byte shape)
+    {
+        var ay = Chip();
+        Write(ay, 11, 0x20);
+        Write(ay, 12, 0x00);
+        Write(ay, 13, shape);
+
+        RunEnvelope(ay, 40);
+
+        var levels = new HashSet<int>();
+        for (int i = 0; i < 40; i++)
+        {
+            RunEnvelope(ay, 1);
+            levels.Add(ay.EnvelopeLevel);
+        }
+
+        Assert.True(levels.Count > 1,
+            $"shape 0x{shape:X} should keep cycling, but sat at a single level");
+    }
+
+    [Fact]
+    public void RewritingTheShapeRegisterRetriggersTheEnvelope()
+    {
+        // Music drivers retrigger a note by rewriting register 13 with the same
+        // value, so this must not be short-circuited as an unchanged write.
+        var ay = Chip();
+        Write(ay, 11, 0x20);
+        Write(ay, 12, 0x00);
+        Write(ay, 13, 0x00);   // decay to silence
+
+        RunEnvelope(ay, 40);
+        Assert.Equal(0, ay.EnvelopeLevel);
+
+        Write(ay, 13, 0x00);   // same value again
+        Assert.Equal(15, ay.EnvelopeLevel);
+    }
+
+    [Fact]
+    public void EnvelopeShapeSelectsTheStartingDirection()
+    {
+        var ay = Chip();
+        Write(ay, 11, 0x20);
+        Write(ay, 12, 0x00);
+
+        Write(ay, 13, 0x00);   // attack bit clear: starts at maximum, ramps down
+        Assert.Equal(15, ay.EnvelopeLevel);
+
+        Write(ay, 13, 0x04);   // attack bit set: starts at zero, ramps up
+        Assert.Equal(0, ay.EnvelopeLevel);
+    }
+
+    /// <summary>Renders enough silence to advance the envelope by roughly <paramref name="steps"/> steps.</summary>
+    private static void RunEnvelope(Ay38912 ay, int steps)
+    {
+        // Envelope period 0x0020 at the /256 divider: one step is 0x20 * 256
+        // AY clocks, and one T-state is one AY clock for this purpose.
+        short[] buffer = new short[256];
+        ay.Render(buffer, (ulong)steps * 0x20 * 256);
+    }
+
     [Fact]
     public void Reset_ClearsAllRegisters()
     {

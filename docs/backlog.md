@@ -391,11 +391,24 @@ already owns US-50x.
   all, which is why AGENTS.md's ZEXALL requirement went unenforced long enough
   for two whole instruction groups to break silently.
 
-- [ ] **US-459 — AY noise and envelope generators**
-  Only the three tone channels are modelled. The noise generator (register 6,
-  mixer bits 3-5) and the envelope generator (registers 11-13) are absent, and
-  volume-register bit 4 currently reads as full volume so envelope-driven sound
-  is audible rather than silent.
+- [x] **US-459 — AY noise and envelope generators**
+  A 17-bit LFSR tapped at bits 0 and 3 for noise, and the full 32-step envelope
+  with all sixteen shapes. Volume bit 4 now takes its amplitude from the
+  envelope rather than reading as full volume.
+
+  Two bugs surfaced while doing it, both affecting the 128, +2 and +3 alike:
+
+  - **Every channel was mistuned.** The renderer rounded a sample's worth of AY
+    ticks to the nearest whole tick. At 44.1 kHz a frame gives about 2.5 ticks
+    per sample, and rounding that to 3 is a 20% pitch error. Now carried as a
+    fraction across samples.
+  - **The mixer silenced channels it should not have.** A disabled tone was
+    treated as silencing the whole channel, so a noise-only voice — the usual
+    way to play drums — produced nothing at all. The two sources are ANDed, and
+    a disabled one sits high.
+
+  Writing register 13 restarts the envelope even when the value is unchanged,
+  which is how music drivers retrigger a note.
 
 ---
 

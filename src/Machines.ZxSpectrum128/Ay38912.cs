@@ -49,6 +49,21 @@ public sealed class Ay38912 : IPortBus
     private readonly int[] _toneCounter = new int[3];
     private readonly bool[] _toneOutput = new bool[3];
 
+    // Noise: a 17-bit shift register tapped at bits 0 and 3.
+    private int _noiseCounter;
+    private int _noiseLfsr = 1;
+
+    // Envelope: a 32-step ramp whose direction and end behaviour come from the
+    // shape register.
+    private int _envCounter;
+    private int _envStep;
+    private bool _envAttack;
+    private bool _envHolding;
+
+    /// <summary>Fractional AY ticks carried between render calls, so timing does not quantise.</summary>
+    private double _tickCarry;
+    private double _envTickCarry;
+
     /// <summary>
     /// Meaningful bits of each register. Unused positions always read back as 0
     /// regardless of what was written.
@@ -71,6 +86,15 @@ public sealed class Ay38912 : IPortBus
         Array.Clear(_toneCounter);
         Array.Clear(_toneOutput);
         SelectedRegister = 0;
+
+        _noiseCounter = 0;
+        _noiseLfsr = 1;          // never 0: an all-zero LFSR would never move again
+        _envCounter = 0;
+        _envStep = 0;
+        _envAttack = false;
+        _envHolding = false;
+        _tickCarry = 0;
+        _envTickCarry = 0;
     }
 
     // ── IPortBus ─────────────────────────────────────────────────────────────
@@ -112,6 +136,11 @@ public sealed class Ay38912 : IPortBus
         if (IsDataPort(port))
         {
             _registers[SelectedRegister] = (byte)(value & RegisterMask(SelectedRegister));
+
+            // Writing the shape register restarts the envelope from the top —
+            // even when the value is unchanged. Music drivers rely on this to
+            // retrigger a note, so it must not be optimised into a no-op.
+            if (SelectedRegister == 13) RestartEnvelope();
         }
     }
 
@@ -124,6 +153,12 @@ public sealed class Ay38912 : IPortBus
         162, 229, 324, 458, 647, 915, 1294, 1829
     ];
 
+    /// <summary>Current envelope output, 0-15. Exposed for tests and debugging.</summary>
+    public int EnvelopeLevel => _envAttack ? _envStep >> 1 : (31 - _envStep) >> 1;
+
+    /// <summary>Current noise output bit. Exposed for tests and debugging.</summary>
+    public bool NoiseOutput => (_noiseLfsr & 1) != 0;
+
     /// <summary>
     /// Renders <paramref name="buffer"/> worth of samples covering
     /// <paramref name="tStates"/> of emulated time, and mixes the three channels
@@ -133,42 +168,144 @@ public sealed class Ay38912 : IPortBus
     {
         if (buffer.Length == 0) return;
 
-        // AY ticks per sample. The tone counters run at the AY clock divided by
-        // 16, which is the standard divider for the tone generators.
-        double ayTicksPerSample = (double)tStates / buffer.Length / 16.0;
+        // Tone and noise counters run at the AY clock divided by 16; the
+        // envelope counter divides by 256, so it steps once per 16 tone ticks.
+        //
+        // The fractional part of a sample's worth of ticks is carried rather
+        // than rounded. Rounding to the nearest whole tick was detuning
+        // everything: at 44.1 kHz a frame gives about 2.5 ticks per sample, and
+        // rounding that to 3 is a 20% pitch error.
+        double ticksPerSample = (double)tStates / buffer.Length / 16.0;
 
         int mixer = _registers[7];
 
         for (int i = 0; i < buffer.Length; i++)
         {
+            _tickCarry += ticksPerSample;
+            int ticks = (int)_tickCarry;
+            _tickCarry -= ticks;
+
+            _envTickCarry += ticksPerSample / 16.0;
+            int envTicks = (int)_envTickCarry;
+            _envTickCarry -= envTicks;
+
+            AdvanceNoise(ticks);
+            AdvanceEnvelope(envTicks);
+
             int mixed = 0;
 
             for (int ch = 0; ch < 3; ch++)
             {
-                bool toneEnabled = (mixer & (1 << ch)) == 0; // active low
-                if (!toneEnabled) continue;
-
                 int period = _registers[ch * 2] | ((_registers[ch * 2 + 1] & 0x0F) << 8);
                 if (period == 0) period = 1;
 
-                // Advance this channel's square wave over the sample window.
-                _toneCounter[ch] += (int)Math.Max(1, Math.Round(ayTicksPerSample));
+                _toneCounter[ch] += ticks;
                 while (_toneCounter[ch] >= period)
                 {
                     _toneCounter[ch] -= period;
                     _toneOutput[ch] = !_toneOutput[ch];
                 }
 
-                if (!_toneOutput[ch]) continue;
+                // Both mixer bits are active low, and the two sources are ANDed:
+                // a disabled source sits high rather than silencing the channel,
+                // which is how noise-only and tone-plus-noise voices work.
+                bool toneDisabled  = (mixer & (1 << ch)) != 0;
+                bool noiseDisabled = (mixer & (1 << (ch + 3))) != 0;
+                if (toneDisabled && noiseDisabled) continue;
 
-                // Bit 4 selects envelope mode, which is not modelled yet; treat
-                // it as full volume so envelope-driven sound is audible.
+                bool output = (toneDisabled || _toneOutput[ch])
+                           && (noiseDisabled || NoiseOutput);
+                if (!output) continue;
+
+                // Bit 4 hands the channel's amplitude to the envelope generator.
                 byte volumeReg = _registers[8 + ch];
-                int level = (volumeReg & 0x10) != 0 ? 0x0F : volumeReg & 0x0F;
+                int level = (volumeReg & 0x10) != 0 ? EnvelopeLevel : volumeReg & 0x0F;
                 mixed += VolumeTable[level];
             }
 
             buffer[i] = (short)Math.Clamp(mixed, short.MinValue, short.MaxValue);
         }
+    }
+
+    // ── Noise ────────────────────────────────────────────────────────────────
+
+    private void AdvanceNoise(int ticks)
+    {
+        int period = _registers[6] & 0x1F;
+        if (period == 0) period = 1;
+
+        _noiseCounter += ticks;
+        while (_noiseCounter >= period)
+        {
+            _noiseCounter -= period;
+
+            // 17-bit maximal-length LFSR, feedback from bits 0 and 3. Taking the
+            // output from bit 0 gives the AY's characteristic hiss.
+            int feedback = (_noiseLfsr ^ (_noiseLfsr >> 3)) & 1;
+            _noiseLfsr = (_noiseLfsr >> 1) | (feedback << 16);
+        }
+    }
+
+    // ── Envelope ─────────────────────────────────────────────────────────────
+
+    private void RestartEnvelope()
+    {
+        _envStep = 0;
+        _envCounter = 0;
+        _envAttack = (_registers[13] & 0x04) != 0;   // bit 2: ramp up rather than down
+        _envHolding = false;
+    }
+
+    private void AdvanceEnvelope(int ticks)
+    {
+        if (ticks == 0) return;
+
+        int period = _registers[11] | (_registers[12] << 8);
+        if (period == 0) period = 1;
+
+        _envCounter += ticks;
+        while (_envCounter >= period)
+        {
+            _envCounter -= period;
+            StepEnvelope();
+        }
+    }
+
+    /// <summary>
+    /// Advances one of the 32 envelope steps, applying the shape register's
+    /// continue, alternate and hold bits when a ramp finishes.
+    /// </summary>
+    private void StepEnvelope()
+    {
+        if (_envHolding) return;
+
+        _envStep++;
+        if (_envStep < 32) return;
+
+        int shape = _registers[13];
+        bool cont = (shape & 0x08) != 0;
+        bool alternate = (shape & 0x02) != 0;
+        bool hold = (shape & 0x01) != 0;
+
+        // Without the continue bit the envelope runs one ramp and then sits at
+        // silence, whichever direction it ran — shapes 0-7 all decay to nothing.
+        if (!cont)
+        {
+            _envHolding = true;
+            _envAttack = false;
+            _envStep = 31;          // level (31 - 31) >> 1 == 0
+            return;
+        }
+
+        if (hold)
+        {
+            _envHolding = true;
+            if (alternate) _envAttack = !_envAttack;
+            _envStep = 31;
+            return;
+        }
+
+        _envStep = 0;
+        if (alternate) _envAttack = !_envAttack;
     }
 }
