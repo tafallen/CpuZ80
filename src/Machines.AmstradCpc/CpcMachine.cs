@@ -133,7 +133,12 @@ public sealed class CpcMachine : ICpuHost
                 GateArray.OnHSync();
             }
 
-            Ppi.VSync = Cpu.TotalCycles >= vsyncStart;
+            bool vsync = Cpu.TotalCycles >= vsyncStart;
+
+            // The Gate Array resynchronises its interrupt counter two HSyncs
+            // after VSync begins, so it needs the leading edge, not the level.
+            if (vsync && !Ppi.VSync) GateArray.OnVSync();
+            Ppi.VSync = vsync;
 
             Cpu.Step();
         }

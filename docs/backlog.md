@@ -42,6 +42,12 @@ copies in sync manually. Do not add cross-repo project references.
 
 ## Hardware Emulation (Future Milestones)
 
+> **Chip status:** [chip-status.md](./chip-status.md) records which chips are
+> complete and which are partial, with the specific registers or commands
+> missing from each. Worth reading before assuming a machine "works" — every
+> current gap sits in a part of a chip the boot ROM never touches, so a booting
+> machine is evidence about the boot path and nothing else.
+
 ---
 
 ### Epic 1 — Composable Infrastructure

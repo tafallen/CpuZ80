@@ -73,7 +73,7 @@ public sealed class FerrantiUla2C184E : IPortBus, ICpuHost
     public void Out(ushort port, byte value)
     {
         bool mic = (value & 0x08) != 0;
-        _tape?.WriteBit(mic);
+        _tape?.WriteBit(mic, _cpu?.TotalCycles ?? 0);
         
         if (_cpu is not null)
             _beeper.SetLevel(_cpu.TotalCycles, mic ? 10 : 0);

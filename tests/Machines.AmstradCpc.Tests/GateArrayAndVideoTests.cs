@@ -63,8 +63,42 @@ public class GateArrayAndVideoTests
         var (ga, _) = Build();
 
         ga.Out(Port, value);
+        ga.OnHSync();          // the mode is latched until the next HSync
 
         Assert.Equal(mode, ga.ScreenMode);
+    }
+
+    [Fact]
+    public void AModeChangeIsLatchedUntilTheNextHSync()
+    {
+        // Software changes mode mid-frame for split screens and relies on the
+        // change landing on a line boundary. Applying it the instant the port
+        // is written tears the line the write happens on.
+        var (ga, _) = Build();
+        ga.Out(Port, 0x81);
+        ga.OnHSync();
+        Assert.Equal(1, ga.ScreenMode);
+
+        ga.Out(Port, 0x80);                    // ask for mode 0 mid-line
+
+        Assert.Equal(1, ga.ScreenMode);        // not yet
+        Assert.Equal(0, ga.PendingScreenMode);
+
+        ga.OnHSync();
+
+        Assert.Equal(0, ga.ScreenMode);        // now
+    }
+
+    [Fact]
+    public void OnlyTheLastModeWrittenBeforeAnHSyncTakesEffect()
+    {
+        var (ga, _) = Build();
+
+        ga.Out(Port, 0x80);
+        ga.Out(Port, 0x82);
+        ga.OnHSync();
+
+        Assert.Equal(2, ga.ScreenMode);
     }
 
     [Fact]
@@ -115,12 +149,15 @@ public class GateArrayAndVideoTests
         var (ga, _) = Build();
 
         ga.Out(0xFF00, 0x83);   // A15 set: not ours
+        ga.OnHSync();
         Assert.Equal(1, ga.ScreenMode);
 
         ga.Out(0x3F00, 0x83);   // A14 clear: not ours
+        ga.OnHSync();
         Assert.Equal(1, ga.ScreenMode);
 
         ga.Out(0x7F00, 0x83);
+        ga.OnHSync();
         Assert.Equal(3, ga.ScreenMode);
     }
 
@@ -137,6 +174,59 @@ public class GateArrayAndVideoTests
 
         // 300 Hz on a PAL machine: six per 50 Hz frame, not one.
         Assert.Equal(6, fired);
+    }
+
+    [Fact]
+    public void VSyncResynchronisesTheCounterTwoHSyncsLater()
+    {
+        // The Gate Array keeps interrupts in step with the frame by resetting
+        // the counter two HSyncs after VSync begins, rather than letting it
+        // free-run and drift against the display.
+        var (ga, _) = Build();
+        for (int i = 0; i < 10; i++) ga.OnHSync();
+        Assert.Equal(10, ga.RasterCounter);
+
+        ga.OnVSync();
+        ga.OnHSync();
+        Assert.Equal(11, ga.RasterCounter);   // still counting
+
+        ga.OnHSync();
+        Assert.Equal(0, ga.RasterCounter);    // resynchronised
+    }
+
+    [Fact]
+    public void TheVSyncResyncIssuesAnInterruptWhenTheCounterIsBelow32()
+    {
+        var (ga, _) = Build();
+        int fired = 0;
+        ga.InterruptRequested += () => fired++;
+
+        for (int i = 0; i < 10; i++) ga.OnHSync();   // counter well under 32
+        ga.OnVSync();
+        ga.OnHSync();
+        ga.OnHSync();
+
+        Assert.Equal(1, fired);
+    }
+
+    [Fact]
+    public void TheVSyncResyncSuppressesTheInterruptWhenBit5IsSet()
+    {
+        // A counter at 32 or above is already close to its own interrupt;
+        // firing here as well would double up.
+        var (ga, _) = Build();
+        for (int i = 0; i < 40; i++) ga.OnHSync();
+        Assert.True((ga.RasterCounter & 0x20) != 0);
+
+        int fired = 0;
+        ga.InterruptRequested += () => fired++;
+
+        ga.OnVSync();
+        ga.OnHSync();
+        ga.OnHSync();
+
+        Assert.Equal(0, fired);
+        Assert.Equal(0, ga.RasterCounter);
     }
 
     // ── Pixel packing ────────────────────────────────────────────────────────

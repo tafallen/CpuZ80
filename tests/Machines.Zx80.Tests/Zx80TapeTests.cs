@@ -59,106 +59,185 @@ public class Zx80TapeTests
         Assert.False(tape.LastWrittenBit);
     }
 
-    // ── SinclairTapeAdapter pulse encoding (tests 4–5) ───────────────────────────
+    // ── SinclairTapeAdapter: timed pulse playback ───────────────────────────────
+    //
+    // These replace an earlier set that called ReadBit(0) repeatedly and expected
+    // one signal level per call. That model made the pulse rate depend on how
+    // often the ULA happened to poll rather than on elapsed time, so it could
+    // never have loaded a real file — and no test ever loaded one, so nothing
+    // caught it.
+
+    private const int HalfPulse = 487;    // 150us at 3.25MHz
+    private const int BitGap = 4225;      // 1300us
 
     [Fact]
-    public void TapeAdapter_ZeroBit_Generates4PulseHighLowPairs()
+    public void TapeAdapter_PulsesAlternateAtTheRealRate()
     {
-        // A byte of 0x00: all 8 bits are 0. Each 0-bit = 4 × (HIGH, LOW).
-        // The first bit (MSB) is 0, so ReadBit(0) should produce 4 HIGH+LOW pairs.
+        var adapter = new SinclairTapeAdapter();
+        adapter.Load(new MemoryStream([0x00]));   // first bit is a 0: four pulses
+
+        // Sampling in the middle of each half-pulse gives its level.
+        Assert.True(adapter.ReadBit((ulong)(HalfPulse * 0.5)));
+        Assert.False(adapter.ReadBit((ulong)(HalfPulse * 1.5)));
+        Assert.True(adapter.ReadBit((ulong)(HalfPulse * 2.5)));
+        Assert.False(adapter.ReadBit((ulong)(HalfPulse * 3.5)));
+    }
+
+    [Fact]
+    public void TapeAdapter_HoldsItsLevelBetweenTransitions()
+    {
+        // The whole point of timing it: sampling twice inside one half-pulse
+        // must give the same answer both times.
         var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x00]));
 
-        // 0 bit → 4 pulses = 8 ReadBit(0) calls: true,false,true,false,true,false,true,false
-        var states = new List<bool>();
-        for (int i = 0; i < 8; i++)
-            states.Add(adapter.ReadBit(0));
+        Assert.True(adapter.ReadBit(10));
+        Assert.True(adapter.ReadBit(20));
+        Assert.True(adapter.ReadBit((ulong)(HalfPulse - 1)));
+    }
 
-        Assert.Equal([true, false, true, false, true, false, true, false], states);
+    [Theory]
+    [InlineData(0x00, 4)]   // every bit 0: four pulses each
+    [InlineData(0xFF, 9)]   // every bit 1: nine pulses each
+    public void TapeAdapter_BitsUseTheRightPulseCount(byte value, int pulsesPerBit)
+    {
+        var adapter = new SinclairTapeAdapter();
+        adapter.Load(new MemoryStream([value]));
+
+        // Eight bits, each pulsesPerBit pulses of two half-pulses, plus a gap.
+        ulong expected = (ulong)(8 * (pulsesPerBit * 2 * HalfPulse + BitGap));
+
+        Assert.Equal(expected, adapter.LengthInTStates);
     }
 
     [Fact]
-    public void TapeAdapter_OneBit_Generates9PulseHighLowPairs()
+    public void TapeAdapter_RunsOutIntoSilence()
     {
-        // A byte of 0x80 (MSB=1): first bit is 1 → 9 × (HIGH, LOW) = 18 ReadBit(0) calls.
         var adapter = new SinclairTapeAdapter();
-        adapter.Load(new MemoryStream([0x80]));
+        adapter.Load(new MemoryStream([0x00]));
 
-        var states = new List<bool>();
-        for (int i = 0; i < 18; i++)
-            states.Add(adapter.ReadBit(0));
+        // Start it playing first: the origin is set by the first read, so a
+        // single read at the end would just start the tape there.
+        adapter.ReadBit(0);
 
-        // 9 pulses = 9 true, 9 false, interleaved
-        for (int p = 0; p < 9; p++)
-        {
-            Assert.True(states[p * 2],      $"Pulse {p} HIGH should be true");
-            Assert.False(states[p * 2 + 1], $"Pulse {p} LOW should be false");
-        }
+        Assert.True(adapter.ReadBit(adapter.LengthInTStates + 1));
+        Assert.True(adapter.AtEnd);
     }
 
     [Fact]
-    public void TapeAdapter_AfterAllPulses_ReturnsSilence()
+    public void TapeAdapter_EmptyTapeIsSilent()
     {
-        // Once all data is exhausted, ReadBit(0) returns true (silence = no signal).
         var adapter = new SinclairTapeAdapter();
-        adapter.Load(new MemoryStream([])); // empty tape
+        adapter.Load(new MemoryStream([]));
+
         Assert.True(adapter.ReadBit(0));
-    }
-
-    // ── Round-trip: verify total signal length for a known byte (test 6 adapted) ─
-
-    [Fact]
-    public void TapeAdapter_RoundTrip_CorrectSignalLength()
-    {
-        // 0xA5 = 10100101 — bits MSB-first: 1,0,1,0,0,1,0,1
-        // Signal lengths: 1→18, 0→8 each.
-        // Total = 18+8+18+8+8+18+8+18 = 104 states.
-        //
-        // Pulse pairs always alternate HIGH(true)/LOW(false); two consecutive trues
-        // can ONLY appear once the signal is exhausted (silence). We use this property
-        // to count states without needing to know bit boundaries.
-        const byte testByte = 0xA5;
-        const int  expected  = 104; // 4×18 + 4×8
-
-        var adapter = new SinclairTapeAdapter();
-        adapter.Load(new MemoryStream([testByte]));
-
-        Assert.Equal(expected, CountSignalStates(adapter));
+        Assert.True(adapter.AtEnd);
     }
 
     [Fact]
-    public void TapeAdapter_RoundTrip_AllZerosByte()
+    public void TapeAdapter_PlaybackStartsFromWheneverItIsFirstRead()
     {
-        // 0x00 = 8 zero-bits → 8 × 8 states = 64 total.
+        // The CPU clock is already running by the time the ROM starts loading,
+        // so the tape cannot assume it begins at zero.
         var adapter = new SinclairTapeAdapter();
         adapter.Load(new MemoryStream([0x00]));
-        Assert.Equal(64, CountSignalStates(adapter));
+
+        const ulong origin = 1_000_000;
+        Assert.True(adapter.ReadBit(origin));
+        Assert.False(adapter.ReadBit(origin + (ulong)(HalfPulse * 1.5)));
+    }
+
+    // ── SinclairTapeAdapter: recording ──────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0x00)]
+    [InlineData(0xFF)]
+    [InlineData(0xA5)]
+    [InlineData(0x3C)]
+    public void TapeAdapter_RecordsWhatTheMachineSaves(byte value)
+    {
+        // Saving is the same encoding in reverse, so playing a byte's own pulse
+        // train into the recorder must give the byte back.
+        var adapter = new SinclairTapeAdapter();
+        ulong t = 0;
+
+        adapter.WriteBit(false, t);
+
+        for (int bit = 7; bit >= 0; bit--)
+        {
+            int pulses = ((value >> bit) & 1) != 0 ? 9 : 4;
+            for (int p = 0; p < pulses; p++)
+            {
+                adapter.WriteBit(true, t);
+                t += HalfPulse;
+                adapter.WriteBit(false, t);
+                t += HalfPulse;
+            }
+
+            // The gap that ends the bit.
+            t += BitGap;
+            adapter.WriteBit(false, t);
+        }
+
+        Assert.Equal([value], adapter.RecordedBytes);
     }
 
     [Fact]
-    public void TapeAdapter_RoundTrip_AllOnesByte()
+    public void TapeAdapter_SaveWritesTheRecordedBytes()
     {
-        // 0xFF = 8 one-bits → 8 × 18 states = 144 total.
         var adapter = new SinclairTapeAdapter();
-        adapter.Load(new MemoryStream([0xFF]));
-        Assert.Equal(144, CountSignalStates(adapter));
+        RecordByte(adapter, 0x5A, 0);
+
+        var stream = new MemoryStream();
+        adapter.Save(stream);
+
+        Assert.Equal([0x5A], stream.ToArray());
     }
 
-    // Count ReadBit(0) signal states until silence (two consecutive trues).
-    // Pulse pairs are always HIGH(true)/LOW(false). When a HIGH is followed by another
-    // HIGH, the data is exhausted. We peek on each HIGH to avoid counting silence.
-    private static int CountSignalStates(SinclairTapeAdapter adapter)
+    [Fact]
+    public void TapeAdapter_UntimedWritesAreIgnoredRatherThanGuessed()
     {
-        int count = 0;
-        while (true)
+        // A level with no timestamp cannot be decoded. Guessing a duration would
+        // produce plausible but wrong data, which is worse than nothing.
+        var adapter = new SinclairTapeAdapter();
+
+        for (int i = 0; i < 200; i++) adapter.WriteBit(i % 2 == 0);
+
+        Assert.Empty(adapter.RecordedBytes);
+    }
+
+    [Fact]
+    public void TapeAdapter_ClearRecordingDiscardsTheCapture()
+    {
+        var adapter = new SinclairTapeAdapter();
+        RecordByte(adapter, 0x5A, 0);
+        Assert.NotEmpty(adapter.RecordedBytes);
+
+        adapter.ClearRecording();
+
+        Assert.Empty(adapter.RecordedBytes);
+    }
+
+    /// <summary>Plays one byte's pulse train into the recorder.</summary>
+    private static ulong RecordByte(SinclairTapeAdapter adapter, byte value, ulong t)
+    {
+        adapter.WriteBit(false, t);
+
+        for (int bit = 7; bit >= 0; bit--)
         {
-            bool state = adapter.ReadBit(0);
-            if (!state) { count++; continue; }       // LOW: always part of signal
-            bool next = adapter.ReadBit(0);
-            if (!next) { count += 2; continue; }     // HIGH+LOW: real pulse pair
-            break;                                    // HIGH+HIGH: silence — stop
+            int pulses = ((value >> bit) & 1) != 0 ? 9 : 4;
+            for (int p = 0; p < pulses; p++)
+            {
+                adapter.WriteBit(true, t);
+                t += HalfPulse;
+                adapter.WriteBit(false, t);
+                t += HalfPulse;
+            }
+            t += BitGap;
+            adapter.WriteBit(false, t);
         }
-        return count;
+
+        return t;
     }
 
 

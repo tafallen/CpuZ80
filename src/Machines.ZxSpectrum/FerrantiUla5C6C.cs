@@ -169,7 +169,7 @@ public sealed class FerrantiUla5C6C : IPortBus, ICpuHost
                 _beeper.SetLevel(_cpu.TotalCycles, level);
             }
 
-            _tape?.WriteBit(mic);
+            _tape?.WriteBit(mic, _cpu?.TotalCycles ?? 0);
         }
     }
 

@@ -27,8 +27,17 @@ public sealed class AmstradGateArray : IPortBus
     /// <summary>Hardware colour per pen, plus the border at index 16.</summary>
     private readonly byte[] _pens = new byte[PenCount + 1];
 
-    /// <summary>Screen mode 0-3.</summary>
+    /// <summary>Screen mode 0-3, as the video circuit sees it.</summary>
+    /// <remarks>
+    /// A mode written to RMR does not take effect until the next HSync. Software
+    /// changes mode mid-frame for split-screen effects and relies on the change
+    /// landing on a line boundary; applying it immediately tears the line the
+    /// write happens on.
+    /// </remarks>
     public int ScreenMode { get; private set; }
+
+    /// <summary>The mode most recently written, which becomes <see cref="ScreenMode"/> at the next HSync.</summary>
+    public int PendingScreenMode { get; private set; }
 
     /// <summary>
     /// The interrupt counter, incremented on each HSync and reset at 52.
@@ -45,8 +54,13 @@ public sealed class AmstradGateArray : IPortBus
         _selectedPen = 0;
         Array.Clear(_pens);
         ScreenMode = 1;
+        PendingScreenMode = 1;
         RasterCounter = 0;
+        _hsyncsSinceVSync = -1;
     }
+
+    /// <summary>HSyncs counted since VSync began, or -1 when not counting.</summary>
+    private int _hsyncsSinceVSync = -1;
 
     /// <summary>The hardware colour currently assigned to the border.</summary>
     public byte BorderColour => _pens[BorderPen];
@@ -84,7 +98,8 @@ public sealed class AmstradGateArray : IPortBus
 
     private void WriteRmr(byte value)
     {
-        ScreenMode = value & 0x03;
+        // Latched, not applied: the video circuit picks it up at the next HSync.
+        PendingScreenMode = value & 0x03;
 
         // The ROM enables are ACTIVE LOW: a set bit disables. Inverting this
         // maps RAM where the OS expects ROM and the machine dies immediately.
@@ -108,12 +123,40 @@ public sealed class AmstradGateArray : IPortBus
     /// </summary>
     public void OnHSync()
     {
+        // A mode written during the previous line takes effect now.
+        ScreenMode = PendingScreenMode;
+
         RasterCounter++;
+
+        // Two HSyncs after VSync begins the Gate Array resynchronises the
+        // counter so interrupts stay in step with the frame. Whether an
+        // interrupt is issued depends on how far through the counter already
+        // was: if bit 5 is set it is close enough to the next one that firing
+        // would double up, so it is suppressed.
+        if (_hsyncsSinceVSync >= 0)
+        {
+            _hsyncsSinceVSync++;
+            if (_hsyncsSinceVSync == 2)
+            {
+                _hsyncsSinceVSync = -1;
+                bool suppress = (RasterCounter & 0x20) != 0;
+                RasterCounter = 0;
+                if (!suppress) InterruptRequested?.Invoke();
+                return;
+            }
+        }
+
         if (RasterCounter < 52) return;
 
         RasterCounter = 0;
         InterruptRequested?.Invoke();
     }
+
+    /// <summary>
+    /// Called when VSync begins. The Gate Array then waits two HSyncs before
+    /// resynchronising its interrupt counter — see <see cref="OnHSync"/>.
+    /// </summary>
+    public void OnVSync() => _hsyncsSinceVSync = 0;
 
     /// <summary>
     /// Called when the CPU acknowledges an interrupt: bit 5 of the counter is
