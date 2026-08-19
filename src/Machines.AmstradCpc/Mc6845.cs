@@ -48,8 +48,41 @@ public sealed class Mc6845 : IPortBus
     /// <summary>R4: total character rows per frame, minus one.</summary>
     public int VerticalTotal => _registers[4];
 
-    /// <summary>R0: total characters per line, minus one.</summary>
+    /// <summary>R0: total characters per line, minus one. This sets the line period.</summary>
     public int HorizontalTotal => _registers[0];
+
+    /// <summary>R2: the character position at which HSync starts.</summary>
+    public int HorizontalSyncPosition => _registers[2];
+
+    /// <summary>R3 low nibble: HSync width in characters. Zero means no HSync.</summary>
+    public int HorizontalSyncWidth => _registers[3] & 0x0F;
+
+    /// <summary>R3 high nibble: VSync width in scanlines. Zero means 16.</summary>
+    public int VerticalSyncWidth
+    {
+        get
+        {
+            int width = (_registers[3] >> 4) & 0x0F;
+            return width == 0 ? 16 : width;
+        }
+    }
+
+    /// <summary>R5: extra scanlines added to the frame after the last character row.</summary>
+    public int VerticalTotalAdjust => _registers[5];
+
+    /// <summary>R7: the character row at which VSync starts.</summary>
+    public int VerticalSyncPosition => _registers[7];
+
+    /// <summary>Scanlines in a whole frame, from R4, R9 and R5.</summary>
+    /// <remarks>
+    /// This is what makes the frame rate the CRTC's business rather than a
+    /// constant: reprogramming any of the three changes how long a frame takes,
+    /// and raster effects depend on that being followed.
+    /// </remarks>
+    public int ScanlinesPerFrame => (VerticalTotal + 1) * (MaxScanline + 1) + VerticalTotalAdjust;
+
+    /// <summary>The scanline within the frame at which VSync begins.</summary>
+    public int VSyncStartScanline => VerticalSyncPosition * (MaxScanline + 1);
 
     public void Reset()
     {

@@ -16,13 +16,20 @@ public sealed class CpcMachine : ICpuHost
     /// <summary>4 MHz, and every access is aligned to a microsecond boundary.</summary>
     public const int ClockHz = 4_000_000;
 
-    /// <summary>A 50 Hz frame at 4 MHz.</summary>
-    public const int FrameCycles = 80_000;
-
     /// <summary>
-    /// T-states between HSyncs: 64 microseconds per scanline at 4 MHz.
+    /// T-states per CRTC character: one microsecond at 4 MHz.
     /// </summary>
-    private const int CyclesPerScanline = 256;
+    /// <remarks>
+    /// Everything else about frame timing follows from this and the CRTC's own
+    /// registers, rather than from constants. A line is R0+1 characters and a
+    /// frame is (R4+1)(R9+1)+R5 lines, so reprogramming any of them changes the
+    /// frame rate — which is exactly what raster effects and overscan screens
+    /// rely on.
+    /// </remarks>
+    public const int CyclesPerCharacter = 4;
+
+    /// <summary>A standard 50 Hz frame: 312 lines of 64 characters.</summary>
+    public const int FrameCycles = 312 * 64 * CyclesPerCharacter;
 
     public Cpu Cpu { get; }
     public CpcMemory Memory { get; }
@@ -35,8 +42,7 @@ public sealed class CpcMachine : ICpuHost
     private readonly AddressDecoder _bus;
     private readonly PortDecoder _ports;
     private readonly RomSelectPort _romSelect;
-    private ulong _nextHSync;
-    private ulong _frameEnd;
+    private ulong _nextLine;
 
     public CpcMachine(
         byte[] lowerRom,
@@ -91,13 +97,9 @@ public sealed class CpcMachine : ICpuHost
         Ppi.Reset();
         Psg.Reset();
 
-        // The CPU boots in interrupt mode 1 with the lower ROM paged in.
-        _nextHSync = Cpu.TotalCycles + CyclesPerScanline;
-
-        // Not TotalCycles + FrameCycles: RunFrame adds a frame before running,
-        // so pre-adding one here makes the first frame run twice as long as
-        // every other one.
-        _frameEnd = Cpu.TotalCycles;
+        // Not TotalCycles + a line: RunFrame advances the target before running,
+        // so pre-adding here would make the first line twice as long.
+        _nextLine = Cpu.TotalCycles;
         _lastAudioTState = Cpu.TotalCycles;
     }
 
@@ -109,38 +111,43 @@ public sealed class CpcMachine : ICpuHost
 
     public void Step() => Cpu.Step();
 
-    /// <summary>Runs one 50 Hz frame, feeding the Gate Array its HSyncs as it goes.</summary>
+    /// <summary>Runs one frame, with the length the CRTC currently describes.</summary>
     public void RunFrame()
     {
-        _frameEnd += FrameCycles;
+        int cyclesPerLine = (Crtc.HorizontalTotal + 1) * CyclesPerCharacter;
+        int scanlines = Crtc.ScanlinesPerFrame;
 
-        // Recover rather than spin if the machine has fallen far behind.
-        if (Cpu.TotalCycles > _frameEnd + FrameCycles)
+        // A part-programmed CRTC can describe a frame of no lines, or one far
+        // longer than any display. Clamping keeps a mid-reprogramming frame from
+        // either spinning forever or returning without running any code.
+        cyclesPerLine = Math.Clamp(cyclesPerLine, CyclesPerCharacter, 4096);
+        scanlines = Math.Clamp(scanlines, 1, 1024);
+
+        int vsyncStart = Crtc.VSyncStartScanline;
+        int vsyncEnd = vsyncStart + Crtc.VerticalSyncWidth;
+
+        for (int line = 0; line < scanlines; line++)
         {
-            _frameEnd = Cpu.TotalCycles + FrameCycles;
-            _nextHSync = Cpu.TotalCycles + CyclesPerScanline;
-        }
-
-        // VSync is asserted for the last few scanlines of the frame, which is
-        // what the firmware waits on.
-        ulong vsyncStart = _frameEnd - (8 * CyclesPerScanline);
-
-        while (Cpu.TotalCycles < _frameEnd)
-        {
-            if (Cpu.TotalCycles >= _nextHSync)
-            {
-                _nextHSync += CyclesPerScanline;
-                GateArray.OnHSync();
-            }
-
-            bool vsync = Cpu.TotalCycles >= vsyncStart;
+            bool vsync = line >= vsyncStart && line < vsyncEnd;
 
             // The Gate Array resynchronises its interrupt counter two HSyncs
             // after VSync begins, so it needs the leading edge, not the level.
             if (vsync && !Ppi.VSync) GateArray.OnVSync();
             Ppi.VSync = vsync;
 
-            Cpu.Step();
+            // Carried rather than measured from the current cycle count, so the
+            // overshoot of the last instruction on each line does not accumulate
+            // into a drifting frame rate.
+            _nextLine += (ulong)cyclesPerLine;
+
+            if (Cpu.TotalCycles > _nextLine + (ulong)cyclesPerLine)
+            {
+                _nextLine = Cpu.TotalCycles + (ulong)cyclesPerLine;
+            }
+
+            while (Cpu.TotalCycles < _nextLine) Cpu.Step();
+
+            GateArray.OnHSync();
         }
 
         Ppi.VSync = false;

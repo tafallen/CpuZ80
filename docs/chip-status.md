@@ -24,7 +24,7 @@ Last audited: 2026-08-18.
 
 | Chip | Machines | Status | What's missing | Risk |
 |---|---|---|---|---|
-| **`Mc6845`** (CRTC) | CPC | **Partial** — 6 of 18 registers act | R2/R3 sync position and widths, R5 vertical adjust, R8 interlace, R10/R11 and R14/R15 cursor, R16/R17 light pen. Status register always returns 0. `VerticalTotal`/`HorizontalTotal` are exposed but read by nothing — the frame loop uses a hardcoded 256 T-state scanline | **High** — most software reprograms the CRTC |
+| **`Mc6845`** (CRTC) | CPC | **Near complete** — every timing and geometry register acts | R8 interlace, R10/R11 and R14/R15 cursor, R16/R17 light pen. Status register always returns 0 | Low — the cursor is drawn in software on a CPC, and the firmware reads VSync from the PPI rather than the CRTC status |
 | **`Ppi8255`** | CPC | **Partial** — mode 0 only | The control word is stored but never acted on: port direction bits are ignored, so port A always reads as input and port B is hardwired as input. Modes 1 and 2 (strobed I/O) absent | Low for the CPC, which uses mode 0 only |
 | **`Upd765a`** (FDC) | +3, CPC (planned) | **Partial** — 9 of ~15 commands | Read Track, Scan Equal/Low/High. Read Deleted aliased to Read Data (skip bit ignored); Write Deleted aliased to Write Data (no control mark set). Format fills existing sectors rather than reshaping the track, so geometry cannot change. **No timing at all** — RQM always set, instant seeks, no rotational latency | Medium — blocks copy-protected and timing-dependent disks |
 | **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
@@ -58,6 +58,29 @@ wrong.
 Fixing this properly means driving `RunFrame` from the CRTC's own counters
 rather than a fixed T-state budget, which is a larger change than adding the
 missing registers.
+
+### `Mc6845` — timing now comes from the CRTC
+
+The frame loop used to run on two constants: a 256 T-state scanline and an
+80,000 T-state frame. Geometry already followed R1, R6, R9 and R12/R13, so the
+picture was right, but *time* did not — a program reprogramming R0 or R4 for a
+raster split or an overscan screen ran at the wrong rate while still looking
+like it worked.
+
+A line is now `(R0+1)` characters of 4 T-states and a frame is
+`(R4+1)(R9+1)+R5` scanlines, with VSync placed by R7 and sized by R3's high
+nibble. The standard setup comes to 312 lines of 256 T-states, which is 79,872
+per frame rather than the 80,000 that was assumed — and the real ROM's boot
+screen renders pixel-identically either way, which is exactly why the constant
+survived so long.
+
+Two details worth keeping: R3's VSync width of zero means sixteen lines, not
+none, and the per-line target is carried rather than measured from the current
+cycle count so a line's final instruction overshooting cannot accumulate into a
+slow clock.
+
+What remains is genuinely unused on this machine: interlace, the hardware
+cursor (the CPC draws its own in software) and the light pen.
 
 ### `CpcVideo` — now complete
 
