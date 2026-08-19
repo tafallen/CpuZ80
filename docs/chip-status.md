@@ -24,7 +24,7 @@ Last audited: 2026-08-18.
 
 | Chip | Machines | Status | What's missing | Risk |
 |---|---|---|---|---|
-| **`Mc6845`** (CRTC) | CPC | **Near complete** — every timing and geometry register acts | R8 interlace, R10/R11 and R14/R15 cursor, R16/R17 light pen. Status register always returns 0 | Low — the cursor is drawn in software on a CPC, and the firmware reads VSync from the PPI rather than the CRTC status |
+| **`Mc6845`** (CRTC) | CPC | **Complete** as a standard MC6845 | — | The later MC6845*1 and UM6845R also read back R12/R13 and have a status register. Deliberately not modelled: software identifies the CRTC type by exactly those reads |
 | **`Ppi8255`** | CPC | **Partial** — mode 0 only | The control word is stored but never acted on: port direction bits are ignored, so port A always reads as input and port B is hardwired as input. Modes 1 and 2 (strobed I/O) absent | Low for the CPC, which uses mode 0 only |
 | **`Upd765a`** (FDC) | +3, CPC (planned) | **Partial** — 9 of ~15 commands | Read Track, Scan Equal/Low/High. Read Deleted aliased to Read Data (skip bit ignored); Write Deleted aliased to Write Data (no control mark set). Format fills existing sectors rather than reshaping the track, so geometry cannot change. **No timing at all** — RQM always set, instant seeks, no rotational latency | Medium — blocks copy-protected and timing-dependent disks |
 | **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
@@ -58,6 +58,29 @@ wrong.
 Fixing this properly means driving `RunFrame` from the CRTC's own counters
 rather than a fixed T-state budget, which is a larger change than adding the
 missing registers.
+
+### `Mc6845` — complete
+
+Finished on 2026-08-19. The cursor (R10/R11 for the scanline span and blink
+mode, R14/R15 for the address), the light pen (R16/R17, latched by a strobe)
+and interlace (R8) are all implemented, and the readback rules now match the
+part: R14 and R15 are read/write, R16 and R17 read-only, everything else
+write-only.
+
+Two things are deliberately absent rather than missing. A standard MC6845 has
+**no status register**, so returning zero is the part's behaviour; and R12/R13
+do **not** read back on it. Both are features of the later MC6845*1 and the
+UM6845R that some CPCs shipped instead, and software identifies which CRTC is
+fitted by reading exactly those registers — so implementing them here would make
+this chip claim to be a different one.
+
+Writing these tests found a real bug: R10 was masked to five bits, which
+silently discarded the cursor blink mode in bits 6-5 and made every cursor
+steady. It is a seven-bit register.
+
+None of this changes what the CPC draws. The cursor and light pen pins are not
+connected on this machine — the firmware draws its own cursor in software — so
+this is the chip behaving correctly rather than the machine looking different.
 
 ### `Mc6845` — timing now comes from the CRTC
 

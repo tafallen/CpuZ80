@@ -151,6 +151,9 @@ public sealed class CpcMachine : ICpuHost
         }
 
         Ppi.VSync = false;
+
+        // The CRTC counts fields for its cursor blink rate.
+        Crtc.AdvanceField();
     }
 
     /// <summary>The PSG is clocked at 1 MHz, a quarter of the CPU clock.</summary>

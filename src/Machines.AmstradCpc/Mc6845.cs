@@ -84,10 +84,80 @@ public sealed class Mc6845 : IPortBus
     /// <summary>The scanline within the frame at which VSync begins.</summary>
     public int VSyncStartScanline => VerticalSyncPosition * (MaxScanline + 1);
 
+    /// <summary>R8: interlace mode. 0 and 2 are non-interlaced, 1 is sync, 3 is sync and video.</summary>
+    /// <remarks>
+    /// Stored and reported, but it does not change what this machine draws: the
+    /// CPC's display path does not use the CRTC's interlace output, so a program
+    /// that sets it sees no difference on real hardware either.
+    /// </remarks>
+    public int InterlaceMode => _registers[8] & 0x03;
+
+    /// <summary>R14/R15: where the cursor sits in the refresh address space.</summary>
+    public int CursorAddress => ((_registers[14] & 0x3F) << 8) | _registers[15];
+
+    /// <summary>R10 bits 0-4: the first scanline of a character row the cursor covers.</summary>
+    public int CursorStartLine => _registers[10] & 0x1F;
+
+    /// <summary>R11: the last scanline of a character row the cursor covers.</summary>
+    public int CursorEndLine => _registers[11] & 0x1F;
+
+    /// <summary>R10 bits 6-5: 0 steady, 1 off, 2 blink every 16 fields, 3 every 32.</summary>
+    public int CursorBlinkMode => (_registers[10] >> 5) & 0x03;
+
+    /// <summary>R16/R17: the address latched the last time the light pen was strobed.</summary>
+    public int LightPenAddress => ((_registers[16] & 0x3F) << 8) | _registers[17];
+
+    /// <summary>Fields elapsed, which is what the cursor blink rate counts.</summary>
+    private int _fields;
+
+    /// <summary>
+    /// True when the cursor is currently in its visible half of the blink cycle.
+    /// </summary>
+    public bool CursorBlinkOn => CursorBlinkMode switch
+    {
+        0 => true,                          // steady
+        1 => false,                         // disabled
+        2 => (_fields & 0x08) != 0,         // 16-field period
+        _ => (_fields & 0x10) != 0,         // 32-field period
+    };
+
+    /// <summary>
+    /// True when the cursor output would be active for this address and raster
+    /// line.
+    /// </summary>
+    /// <remarks>
+    /// The CPC leaves the CRTC's cursor pin unconnected and draws its own cursor
+    /// in software, so this changes nothing on screen here. It is the chip's
+    /// behaviour rather than the machine's, and a different host could use it.
+    /// </remarks>
+    public bool IsCursorAt(int ma, int ra)
+    {
+        if (!CursorBlinkOn) return false;
+        if ((ma & 0x3FFF) != CursorAddress) return false;
+
+        // A start line above the end line disables the cursor rather than
+        // wrapping, which is what the hardware does.
+        return ra >= CursorStartLine && ra <= CursorEndLine;
+    }
+
+    /// <summary>Advances the blink counter. One call per field.</summary>
+    public void AdvanceField() => _fields++;
+
+    /// <summary>
+    /// Latches the current refresh address into R16/R17, as the light pen strobe
+    /// does.
+    /// </summary>
+    public void StrobeLightPen(int address)
+    {
+        _registers[16] = (byte)((address >> 8) & 0x3F);
+        _registers[17] = (byte)(address & 0xFF);
+    }
+
     public void Reset()
     {
         Array.Clear(_registers);
         _selected = 0;
+        _fields = 0;
 
         // The firmware programs these itself, but a machine that is inspected
         // before it runs should describe a plausible screen rather than a
@@ -115,16 +185,31 @@ public sealed class Mc6845 : IPortBus
 
         return Function(port) switch
         {
-            2 => 0x00,                       // status
+            // A standard MC6845 has no status register. Returning zero is the
+            // part's behaviour, not a gap: the types that do have one are the
+            // UM6845R and the ASICs, and the CPC firmware reads VSync from the
+            // PPI rather than from here.
+            2 => 0x00,
             3 => ReadRegister(),
             _ => 0xFF,
         };
     }
 
+    /// <summary>
+    /// Only R14-R17 read back on a standard MC6845: the cursor address is
+    /// read/write and the light pen is read-only. Everything else is write-only
+    /// and reads as zero.
+    /// </summary>
+    /// <remarks>
+    /// The later MC6845*1 and the UM6845R fitted to some CPCs also return R12
+    /// and R13, and some of those parts have a status register this one does
+    /// not. Programs that detect the CRTC type do it by reading exactly these
+    /// registers, so widening the readback here would make this chip claim to be
+    /// a different one.
+    /// </remarks>
     private byte ReadRegister()
     {
-        // Only registers 12-17 read back on a 6845; the rest return 0.
-        if (_selected is >= 12 and < RegisterCount) return _registers[_selected];
+        if (_selected is >= 14 and < RegisterCount) return _registers[_selected];
         return 0x00;
     }
 
@@ -151,7 +236,15 @@ public sealed class Mc6845 : IPortBus
     private static byte MaskFor(int register, byte value) => register switch
     {
         4 or 6 or 7 => (byte)(value & 0x7F),
-        5 or 9 or 10 or 11 => (byte)(value & 0x1F),
+        8 => (byte)(value & 0x03),
+        14 => (byte)(value & 0x3F),
+
+        // R10 is seven bits, not five: bits 0-4 are the cursor's first scanline
+        // and bits 6-5 are its blink mode. Masking it to five silently discards
+        // the blink setting, so every cursor comes out steady.
+        10 => (byte)(value & 0x7F),
+
+        5 or 9 or 11 => (byte)(value & 0x1F),
         12 => (byte)(value & 0x3F),
         _ => value,
     };
