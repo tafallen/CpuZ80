@@ -112,7 +112,12 @@ public sealed class Plus3Machine
         Ay = new Ay38912();
         _audioSink = audio;
 
-        if (diskDrive) Fdc = new Upd765a();
+        if (diskDrive)
+        {
+            // Given the CPU's clock the controller models seek times and the
+            // disk's data rate rather than completing instantly.
+            Fdc = new Upd765a { ClockHz = 3_546_900 };
+        }
 
         var joystick = keyboard is not null ? new KempstonJoystick(keyboard) : null;
         _ports = new Plus3PortBus(Ula, Pager, Ay, joystick, () => Ula.FloatingBusValue, Fdc);
@@ -128,6 +133,7 @@ public sealed class Plus3Machine
         if (Fdc is not null)
         {
             Pager.MotorChanged += () => Fdc.MotorOn = Pager.MotorOn;
+            Fdc.Clock = () => Cpu.TotalCycles;
         }
     }
 

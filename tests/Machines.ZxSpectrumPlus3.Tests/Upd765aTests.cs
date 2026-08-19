@@ -361,15 +361,198 @@ public class Upd765aTests
     // ── Format ───────────────────────────────────────────────────────────────
 
     [Fact]
-    public void FormatTrack_FillsTheTrackWithTheFillerByte()
+    public void FormatTrack_LaysDownTheSectorsTheCpuSupplies()
     {
+        // Format has an execution phase: the CPU sends C, H, R and N for every
+        // sector it wants written. An earlier version of this test expected the
+        // result bytes straight after the command, which is what a controller
+        // that can only refill existing sectors would do — it can never change
+        // a track's geometry, which is the whole point of formatting.
         var fdc = Fdc();
 
         // Format Track: opcode, drive/head, N, sectors/track, GPL, filler
         Command(fdc, 0x4D, 0x00, 2, 9, 0x52, 0xE5);
+
+        for (int i = 0; i < 9; i++)
+        {
+            fdc.Out(DataPort, 0);                    // C
+            fdc.Out(DataPort, 0);                    // H
+            fdc.Out(DataPort, (byte)(0x41 + i));     // R
+            fdc.Out(DataPort, 2);                    // N
+        }
+
         ReadResult(fdc, 7);
 
+        var track = fdc.GetDisk(0)!.GetTrack(0, 0)!;
+        Assert.Equal(9, track.Sectors.Count);
         Assert.All(fdc.GetDisk(0)!.FindSector(0, 0, 0x41)!.Data, b => Assert.Equal(0xE5, b));
+    }
+
+    [Fact]
+    public void FormatTrack_CanChangeTheTrackGeometry()
+    {
+        // Reformatting to a different sector count and numbering is exactly
+        // what a controller that only refills sectors cannot do.
+        var fdc = Fdc();
+
+        Command(fdc, 0x4D, 0x00, 2, 4, 0x52, 0x00);
+        for (int i = 0; i < 4; i++)
+        {
+            fdc.Out(DataPort, 0);
+            fdc.Out(DataPort, 0);
+            fdc.Out(DataPort, (byte)(0xC1 + i));     // data-format numbering
+            fdc.Out(DataPort, 2);
+        }
+        ReadResult(fdc, 7);
+
+        var track = fdc.GetDisk(0)!.GetTrack(0, 0)!;
+        Assert.Equal(4, track.Sectors.Count);
+        Assert.NotNull(fdc.GetDisk(0)!.FindSector(0, 0, 0xC1));
+        Assert.Null(fdc.GetDisk(0)!.FindSector(0, 0, 0x41));   // the old numbering is gone
+    }
+
+    // ── Read Track ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ReadTrack_ReturnsEverySectorInPhysicalOrder()
+    {
+        // Read Track ignores the sector number entirely, which is how a driver
+        // reads a track whose numbering it does not know. It cannot be built as
+        // a loop over Read Data.
+        var fdc = Fdc();
+
+        Command(fdc, 0x42, 0x00, 0, 0, 0x00, 2, 0x49, 0x2A, 0xFF);
+
+        var data = new byte[9 * DskBuilder.SectorSize];
+        for (int i = 0; i < data.Length; i++) data[i] = fdc.In(DataPort);
+
+        ReadResult(fdc, 7);
+
+        // Each sector is filled with a byte derived from its number, so the
+        // order they arrive in is visible in the data.
+        for (int sector = 0; sector < 9; sector++)
+        {
+            byte expected = DskBuilder.FillFor(0, (byte)(0x41 + sector));
+            Assert.Equal(expected, data[sector * DskBuilder.SectorSize]);
+        }
+    }
+
+    // ── Deleted data ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public void WriteDeletedData_MarksTheSector()
+    {
+        var fdc = Fdc();
+
+        Command(fdc, 0x49, 0x00, 0, 0, 0x43, 2, 0x49, 0x2A, 0xFF);
+        for (int i = 0; i < DskBuilder.SectorSize; i++) fdc.Out(DataPort, 0x7E);
+        ReadResult(fdc, 7);
+
+        Assert.True(fdc.GetDisk(0)!.FindSector(0, 0, 0x43)!.IsDeleted);
+    }
+
+    [Fact]
+    public void ReadData_FlagsTheControlMarkOnADeletedSector()
+    {
+        var fdc = Fdc();
+        fdc.GetDisk(0)!.FindSector(0, 0, 0x44)!.IsDeleted = true;
+
+        Command(fdc, 0x46, 0x00, 0, 0, 0x44, 2, 0x49, 0x2A, 0xFF);
+        for (int i = 0; i < DskBuilder.SectorSize; i++) fdc.In(DataPort);
+        byte[] result = ReadResult(fdc, 7);
+
+        Assert.Equal(0x40, result[2] & 0x40);   // ST2 CM
+    }
+
+    [Fact]
+    public void TheSkipBitPassesOverTheWrongKindOfSector()
+    {
+        // With SK set the controller skips a sector of the wrong kind instead of
+        // transferring it, so there is no execution phase at all.
+        var fdc = Fdc();
+        fdc.GetDisk(0)!.FindSector(0, 0, 0x45)!.IsDeleted = true;
+
+        Command(fdc, 0x66, 0x00, 0, 0, 0x45, 2, 0x49, 0x2A, 0xFF);   // Read Data, SK set
+        byte[] result = ReadResult(fdc, 7);
+
+        Assert.Equal(0x40, result[2] & 0x40);
+    }
+
+    [Fact]
+    public void ReadDeletedData_ReadsADeletedSectorCleanly()
+    {
+        var fdc = Fdc();
+        fdc.GetDisk(0)!.FindSector(0, 0, 0x46)!.IsDeleted = true;
+
+        Command(fdc, 0x4C, 0x00, 0, 0, 0x46, 2, 0x49, 0x2A, 0xFF);
+        for (int i = 0; i < DskBuilder.SectorSize; i++) fdc.In(DataPort);
+        byte[] result = ReadResult(fdc, 7);
+
+        // The kind matches what was asked for, so no control mark.
+        Assert.Equal(0x00, result[2] & 0x40);
+    }
+
+    // ── Scan ─────────────────────────────────────────────────────────────────
+
+    private static byte[] RunScan(Upd765a fdc, byte opcode, byte[] supplied)
+    {
+        Command(fdc, opcode, 0x00, 0, 0, 0x41, 2, 0x49, 0x2A, 0xFF);
+        for (int i = 0; i < DskBuilder.SectorSize; i++) fdc.Out(DataPort, supplied[i % supplied.Length]);
+        return ReadResult(fdc, 7);
+    }
+
+    [Fact]
+    public void ScanEqual_ReportsAHitWhenTheDataMatches()
+    {
+        var fdc = Fdc();
+        byte onDisk = DskBuilder.FillFor(0, 0x41);
+
+        byte[] result = RunScan(fdc, 0x51, [onDisk]);
+
+        Assert.Equal(0x08, result[2] & 0x08);   // ST2 SH: scan hit
+    }
+
+    [Fact]
+    public void ScanEqual_ReportsNotMetWhenTheDataDiffers()
+    {
+        var fdc = Fdc();
+        byte onDisk = DskBuilder.FillFor(0, 0x41);
+
+        byte[] result = RunScan(fdc, 0x51, [(byte)(onDisk ^ 0xFF)]);
+
+        Assert.Equal(0x04, result[2] & 0x04);   // ST2 SN: not satisfied
+    }
+
+    [Fact]
+    public void ScanLowOrEqual_MatchesWhenTheDiskIsLower()
+    {
+        var fdc = Fdc();
+        byte onDisk = DskBuilder.FillFor(0, 0x41);
+
+        byte[] result = RunScan(fdc, 0x59, [(byte)Math.Min(0xFE, onDisk + 1)]);
+
+        Assert.Equal(0x08, result[2] & 0x08);
+    }
+
+    [Fact]
+    public void ScanHighOrEqual_MatchesWhenTheDiskIsHigher()
+    {
+        var fdc = Fdc();
+        byte onDisk = DskBuilder.FillFor(0, 0x41);
+
+        byte[] result = RunScan(fdc, 0x5D, [(byte)Math.Max(0, onDisk - 1)]);
+
+        Assert.Equal(0x08, result[2] & 0x08);
+    }
+
+    [Fact]
+    public void ScanTreats0xFFAsAWildcard()
+    {
+        var fdc = Fdc();
+
+        byte[] result = RunScan(fdc, 0x51, [0xFF]);
+
+        Assert.Equal(0x08, result[2] & 0x08);
     }
 
     [Fact]

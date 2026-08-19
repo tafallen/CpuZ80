@@ -39,20 +39,34 @@ public sealed class DiskImage
         public byte St1 { get; init; }
 
         /// <summary>ST2 as recorded when the image was made.</summary>
-        public byte St2 { get; init; }
+        /// <remarks>
+        /// Settable because writing deleted data changes it: the control mark is
+        /// a property of the sector on the disk, not of the image file.
+        /// </remarks>
+        public byte St2 { get; set; }
 
         /// <summary>The sector's data. Writes go here.</summary>
         public byte[] Data { get; init; } = [];
 
         /// <summary>True when the image marked this sector as deleted data (ST2 bit 6).</summary>
-        public bool IsDeleted => (St2 & 0x40) != 0;
+        public bool IsDeleted
+        {
+            get => (St2 & 0x40) != 0;
+            set => St2 = value ? (byte)(St2 | 0x40) : (byte)(St2 & ~0x40);
+        }
     }
 
     public sealed class Track
     {
         public byte Number { get; init; }
         public byte Side { get; init; }
-        public IReadOnlyList<Sector> Sectors { get; init; } = [];
+
+        /// <summary>
+        /// The sectors on this track. Replaced wholesale by a format, which is
+        /// the one operation that changes a track's shape rather than its
+        /// contents.
+        /// </summary>
+        public IReadOnlyList<Sector> Sectors { get; internal set; } = [];
 
         /// <summary>An unformatted track holds no sectors at all, which is not the same as holding empty ones.</summary>
         public bool IsUnformatted => Sectors.Count == 0;
@@ -189,6 +203,23 @@ public sealed class DiskImage
         if (track < 0 || track >= TrackCount) return null;
         if (side < 0 || side >= SideCount) return null;
         return _tracks[track * SideCount + side];
+    }
+
+    /// <summary>
+    /// Rewrites a track's sector list, as a format does.
+    /// </summary>
+    /// <remarks>
+    /// Formatting is the only operation that changes geometry: sector count,
+    /// numbering and size all come from what the controller was told to lay
+    /// down, not from what was there before.
+    /// </remarks>
+    public bool FormatTrack(int track, int side, IReadOnlyList<Sector> sectors)
+    {
+        var existing = GetTrack(track, side);
+        if (existing is null) return false;
+
+        existing.Sectors = sectors;
+        return true;
     }
 
     /// <summary>

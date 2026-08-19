@@ -42,7 +42,7 @@ Last audited: 2026-08-18.
 
 ---
 
-## Notes on the two that matter most
+## Notes
 
 ### `Mc6845`
 
@@ -160,10 +160,28 @@ effects rather than for booting: a mode written to RMR now takes effect at the
 next HSync rather than immediately, and VSync resynchronises the interrupt
 counter two HSyncs later, suppressing the interrupt when bit 5 is already set.
 
-### `Upd765a`
+### `Upd765a` — now complete
 
-The absent timing is the significant part, not the absent commands. `+3DOS` and
-AMSDOS both work against instant completion, but any loader that measures how
-long the controller takes — which is most disk-based copy protection — will not.
-Adding the missing commands is straightforward; adding timing means the FDC
-needs a clock.
+Finished on 2026-08-19. Read Track, all three Scan variants, and proper Read
+and Write Deleted Data with the skip bit. Format Track gained the execution
+phase it was missing: the CPU supplies C, H, R and N for every sector, so a
+format can now change a track's geometry rather than only refilling the sectors
+that were already there.
+
+**Timing is opt-in.** Given a `Clock` the controller models seek times from the
+step rate Specify sets, and delivers bytes at the disk's 250 kbit/s data rate;
+without one it completes instantly, as before. Opt-in because a controller that
+suddenly takes time breaks every caller that polls without advancing a clock —
+one of this repo's own tests did exactly that, reading the data port in a tight
+loop and getting 0xFF. Real driver code polls the status register, and that test
+now does too. The +3 wires the clock up; the boot path is unaffected.
+
+Building it exposed a bug in the existing code: the sector's recorded ST2 was
+passed straight through to the result, so a deleted sector always reported the
+control mark — even to Read Deleted Data, which had asked for exactly that. The
+mark reports a mismatch between the data mark found and the command, not the
+state of the sector alone.
+
+The old Format Track test asserted the result bytes arrived straight after the
+command, which is what a controller with no execution phase does. It was
+encoding the simplification rather than the hardware, and has been rewritten.

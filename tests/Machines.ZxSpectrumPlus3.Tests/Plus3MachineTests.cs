@@ -278,8 +278,16 @@ public class Plus3MachineTests
             machine.WritePort(0x3FFD, b);
         }
 
+        // With a drive fitted the controller is clocked, so bytes arrive at the
+        // disk's data rate. Real driver code polls the status register and the
+        // CPU keeps running between bytes; a loop that just reads the data port
+        // as fast as it can gets 0xFF, which is what the hardware does too.
         var data = new byte[DskBuilder.SectorSize];
-        for (int i = 0; i < data.Length; i++) data[i] = machine.ReadPort(0x3FFD);
+        for (int i = 0; i < data.Length; i++)
+        {
+            while ((machine.ReadPort(0x2FFD) & 0x80) == 0) machine.Step();
+            data[i] = machine.ReadPort(0x3FFD);
+        }
 
         Assert.All(data, b => Assert.Equal(DskBuilder.FillFor(0, 0x41), b));
     }
