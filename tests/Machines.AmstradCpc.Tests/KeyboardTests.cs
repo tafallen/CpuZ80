@@ -101,14 +101,19 @@ public class KeyboardTests
     {
         const ushort PsgControl = 0xF600;   // PPI port C
         const ushort PsgData = 0xF400;      // PPI port A
+        const ushort PpiControl = 0xF700;
 
-        // Put register 14 (the keyboard port) on the PSG's data bus and latch it.
-        machine.WritePort(PsgData, 14);
-        machine.WritePort(PsgControl, 0xC0);   // BDIR=1 BC1=1: select register
-        machine.WritePort(PsgControl, 0x00);   // back to inactive
+        // Port A is the PSG's data bus in both directions, so the firmware has
+        // to turn it round: an output to name the register, an input to read it
+        // back. A mode-set word also resets the port latches, which is why port
+        // C is written after it rather than before.
+        machine.WritePort(PpiControl, 0x82);   // A output
+        machine.WritePort(PsgData, 14);        // the keyboard register
+        machine.WritePort(PsgControl, 0xC0);   // BDIR=1 BC1=1: select
+        machine.WritePort(PsgControl, 0x00);
 
-        // Select the row in port C's low nibble, and put the PSG into read mode.
-        machine.WritePort(PsgControl, (byte)(0x40 | row));
+        machine.WritePort(PpiControl, 0x92);   // A input
+        machine.WritePort(PsgControl, (byte)(0x40 | row));   // read mode, row selected
 
         return machine.ReadPort(PsgData);
     }

@@ -25,7 +25,7 @@ Last audited: 2026-08-18.
 | Chip | Machines | Status | What's missing | Risk |
 |---|---|---|---|---|
 | **`Mc6845`** (CRTC) | CPC | **Complete** as a standard MC6845 | — | The later MC6845*1 and UM6845R also read back R12/R13 and have a status register. Deliberately not modelled: software identifies the CRTC type by exactly those reads |
-| **`Ppi8255`** | CPC | **Partial** — mode 0 only | The control word is stored but never acted on: port direction bits are ignored, so port A always reads as input and port B is hardwired as input. Modes 1 and 2 (strobed I/O) absent | Low for the CPC, which uses mode 0 only |
+| **`Ppi8255`** | CPC | **Complete** | — | — |
 | **`Upd765a`** (FDC) | +3, CPC (planned) | **Partial** — 9 of ~15 commands | Read Track, Scan Equal/Low/High. Read Deleted aliased to Read Data (skip bit ignored); Write Deleted aliased to Write Data (no control mark set). Format fills existing sectors rather than reshaping the track, so geometry cannot change. **No timing at all** — RQM always set, instant seeks, no rotational latency | Medium — blocks copy-protected and timing-dependent disks |
 | **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
 | **`CpcVideo`** | CPC | **Complete** | — | — |
@@ -159,6 +159,25 @@ The Gate Array was missing two behaviours, both of which matter for raster
 effects rather than for booting: a mode written to RMR now takes effect at the
 next HSync rather than immediately, and VSync resynchronises the interrupt
 counter two HSyncs later, suppressing the interrupt when bit 5 is already set.
+
+### `Ppi8255` — now complete
+
+Finished on 2026-08-19. Every direction bit is honoured — port A, port B and
+port C's two halves independently — a mode-set word resets the output latches as
+the datasheet specifies, and modes 1 and 2 drive their handshake lines on the
+documented port C bits: PC4/PC5/PC3 for group A input, PC7/PC6/PC3 for group A
+output, PC2/PC1/PC0 for group B, and all five for mode 2.
+
+Directions turned out to matter on a CPC after all. Port A is the PSG's data bus
+in **both** directions, so the firmware turns it round between naming a register
+and reading it back. Two of this repo's own tests read the keyboard without ever
+configuring port A as an input, which only worked because the direction bits were
+being ignored — the real firmware had been doing it correctly all along, which is
+why the end-to-end typing test kept passing while the synthetic ones broke.
+
+Modes 1 and 2 are the part behaving correctly rather than the machine doing
+anything new: the CPC connects nothing to the handshake lines and uses mode 0
+throughout.
 
 ### `Upd765a` — now complete
 
