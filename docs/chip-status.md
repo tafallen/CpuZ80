@@ -27,7 +27,7 @@ Last audited: 2026-08-18.
 | **`Mc6845`** (CRTC) | CPC | **Complete** as a standard MC6845 | — | The later MC6845*1 and UM6845R also read back R12/R13 and have a status register. Deliberately not modelled: software identifies the CRTC type by exactly those reads |
 | **`Ppi8255`** | CPC | **Complete** | — | — |
 | **`Upd765a`** (FDC) | +3, CPC (planned) | **Partial** — 9 of ~15 commands | Read Track, Scan Equal/Low/High. Read Deleted aliased to Read Data (skip bit ignored); Write Deleted aliased to Write Data (no control mark set). Format fills existing sectors rather than reshaping the track, so geometry cannot change. **No timing at all** — RQM always set, instant seeks, no rotational latency | Medium — blocks copy-protected and timing-dependent disks |
-| **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
+| **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Complete** | — | — |
 | **`CpcVideo`** | CPC | **Complete** | — | — |
 | **`SinclairTapeAdapter`** | ZX80/81 | **Complete** | — | — |
 | **`ZxSpectrumTapeAdapter`** | Spectrum family | **Complete** | — | — |
@@ -159,6 +159,31 @@ The Gate Array was missing two behaviours, both of which matter for raster
 effects rather than for booting: a mode written to RMR now takes effect at the
 next HSync rather than immediately, and VSync resynchronises the interrupt
 counter two HSyncs later, suppressing the interrupt when bit 5 is already set.
+
+### `Ay38912` — now complete
+
+Finished on 2026-08-19. I/O port A takes an attachable source and sink, with
+direction from register 7 bit 6: an input reads the pins, an output reads back
+its latch and drives whatever is attached. An unconnected input floats high, as
+it did before.
+
+This turned out to be a structural fix as well as a chip one. The CPC keyboard
+is wired to the **PSG's** port A, with only the row selected by the PPI — but the
+PPI had been intercepting register 14 and returning the matrix itself, which is
+not where that wire goes. The keyboard now hangs off the PSG, the PPI simply
+passes data through, and the end-to-end typing test still passes: proof that the
+CPC firmware really does configure port A as an input, which nothing had
+previously checked.
+
+"Mono only" is struck from the table rather than fixed, because it was never a
+gap in the chip. The AY has three independent analogue outputs and mixing them
+to one is something the machine does — both the 128 and the CPC wire them
+together. `Render` gained an overload that keeps the channels apart for a host
+that wants the ACB or ABC stereo those machines never had.
+
+The 8912 bonds only port A. Port B's register is on the die and behaves, but the
+package brings out no pins for it, so anything attached there is attached to
+nothing.
 
 ### `Ppi8255` — now complete
 

@@ -528,6 +528,103 @@ public class Ay38912Tests
         ay.Render(buffer, (ulong)steps * 0x20 * 256);
     }
 
+    // ── I/O ports ────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void PortAAsAnInputReturnsWhatIsAttached()
+    {
+        // On a CPC this is the keyboard matrix. On a 128 the socket is empty,
+        // so the pins float high — which is what an unattached port still does.
+        var ay = Chip();
+        ay.PortAInput = () => 0x5A;
+
+        Write(ay, 7, 0x00);          // bit 6 clear: port A is an input
+        Assert.False(ay.PortAIsOutput);
+
+        Assert.Equal(0x5A, Read(ay, 14));
+    }
+
+    [Fact]
+    public void PortAAsAnOutputReadsBackItsLatch()
+    {
+        // An output is driving the pins, so the latch is what is on them — the
+        // attached input must not show through.
+        var ay = Chip();
+        ay.PortAInput = () => 0x5A;
+
+        Write(ay, 7, 0x40);          // bit 6 set: port A is an output
+        Write(ay, 14, 0x3C);
+
+        Assert.True(ay.PortAIsOutput);
+        Assert.Equal(0x3C, Read(ay, 14));
+    }
+
+    [Fact]
+    public void WritingAnOutputPortDrivesIt()
+    {
+        var ay = Chip();
+        byte? driven = null;
+        ay.PortAOutput = value => driven = value;
+
+        Write(ay, 7, 0x40);
+        Write(ay, 14, 0x99);
+
+        Assert.Equal((byte?)0x99, driven);
+    }
+
+    [Fact]
+    public void WritingAnInputPortDrivesNothing()
+    {
+        // The latch still takes the value, but nothing reaches the pins.
+        var ay = Chip();
+        byte? driven = null;
+        ay.PortAOutput = value => driven = value;
+
+        Write(ay, 7, 0x00);
+        Write(ay, 14, 0x99);
+
+        Assert.Null(driven);
+    }
+
+    // ── Per-channel output ───────────────────────────────────────────────────
+
+    [Fact]
+    public void ChannelsCanBeRenderedSeparatelyForStereo()
+    {
+        // The chip has three independent analogue outputs; mixing them to one is
+        // something the machine does, not the chip. Both machines here are mono,
+        // but keeping the channels available is the chip being complete rather
+        // than the host gaining a feature.
+        var ay = Chip();
+        Write(ay, 0, 0x40);          // channel A tone
+        Write(ay, 4, 0x40);          // channel C tone
+        Write(ay, 7, 0x38);          // all three tones on
+        Write(ay, 8, 0x0F);          // A loud
+        Write(ay, 10, 0x0F);         // C loud
+
+        short[] mono = new short[2000];
+        short[] left = new short[2000];
+        short[] right = new short[2000];
+        ay.Render(mono, left, right, 100000);
+
+        Assert.Contains(left, s => s != 0);
+        Assert.Contains(right, s => s != 0);
+    }
+
+    [Fact]
+    public void TheMonoRenderStillWorksWithoutStereoBuffers()
+    {
+        var ay = Chip();
+        Write(ay, 0, 0x40);
+        Write(ay, 7, 0x3E);
+        Write(ay, 8, 0x0F);
+
+        short[] buffer = new short[2000];
+        ay.Render(buffer, 100000);
+
+        Assert.Contains(buffer, s => s != 0);
+    }
+
     [Fact]
     public void Reset_ClearsAllRegisters()
     {

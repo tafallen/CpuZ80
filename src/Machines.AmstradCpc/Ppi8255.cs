@@ -11,7 +11,9 @@ namespace Machines.AmstradCpc;
 /// The CPC has no keyboard port. Reading a key means writing a row number to
 /// port C, putting the PSG into read mode through port C's high bits, and
 /// reading port A — which the firmware first has to turn round into an input,
-/// because it uses the same port to write to the PSG.
+/// because it uses the same port to write to the PSG. The matrix itself hangs
+/// off the PSG's I/O port rather than off this chip, so the PPI only supplies
+/// the row.
 ///
 /// Port B bit 0 returns VSync, which is how the firmware synchronises. Getting
 /// it wrong stalls the OS in a way that looks like a CPU bug.
@@ -25,7 +27,6 @@ namespace Machines.AmstradCpc;
 public sealed class Ppi8255 : IPortBus
 {
     private readonly Ay38912 _psg;
-    private readonly ICpcKeyboard _keyboard;
 
     private byte _portA;
     private byte _portB;
@@ -52,11 +53,7 @@ public sealed class Ppi8255 : IPortBus
     /// </summary>
     public byte PortCInput { get; set; } = 0xFF;
 
-    public Ppi8255(Ay38912 psg, ICpcKeyboard keyboard)
-    {
-        _psg = psg;
-        _keyboard = keyboard;
-    }
+    public Ppi8255(Ay38912 psg) => _psg = psg;
 
     public void Reset()
     {
@@ -233,16 +230,12 @@ public sealed class Ppi8255 : IPortBus
         }
 
         // Port A is wired to the PSG's data bus. With the PSG told to read, the
-        // value it returns is whatever its selected register holds — and for
-        // register 14 that is the keyboard matrix.
+        // value it returns is whatever its selected register holds — and the
+        // keyboard hangs off the PSG's own I/O port, not off the PPI, so there
+        // is nothing to special-case here.
         int function = (_portC >> 6) & 0x03;
 
-        if (function == 0x01)   // BDIR=0 BC1=1: read register
-        {
-            return _psg.SelectedRegister == 14
-                ? _keyboard.ReadRow(SelectedKeyboardRow)
-                : _psg.In(0xF400);
-        }
+        if (function == 0x01) return _psg.In(0xFFFD);   // BDIR=0 BC1=1: read register
 
         return _portA;
     }

@@ -21,12 +21,7 @@ public class Ppi8255Tests
     private const ushort PortC = 0xF600;
     private const ushort Control = 0xF700;
 
-    private sealed class SilentKeyboard : ICpcKeyboard
-    {
-        public byte ReadRow(int row) => 0xFF;
-    }
-
-    private static Ppi8255 Ppi() => new(new Ay38912(), new SilentKeyboard());
+    private static Ppi8255 Ppi() => new(new Ay38912());
 
     // ── Directions ───────────────────────────────────────────────────────────
 

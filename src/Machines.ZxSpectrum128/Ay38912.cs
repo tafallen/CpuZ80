@@ -45,6 +45,35 @@ public sealed class Ay38912 : IPortBus
     /// <summary>Register currently selected by a write to 0xFFFD.</summary>
     public int SelectedRegister { get; private set; }
 
+    /// <summary>
+    /// What the outside world is driving onto I/O port A, when it is an input.
+    /// </summary>
+    /// <remarks>
+    /// On a CPC this is the keyboard matrix: the row comes from the PPI and the
+    /// eight keys come back through the PSG. On a 128 the RS232 and keypad
+    /// socket is normally empty, so the pins float high.
+    /// </remarks>
+    public Func<byte>? PortAInput { get; set; }
+
+    /// <summary>Where port A's latch goes when it is an output.</summary>
+    public Action<byte>? PortAOutput { get; set; }
+
+    /// <summary>
+    /// Port B, which the 8912 does not bond to any pins.
+    /// </summary>
+    /// <remarks>
+    /// The register exists on the die and can be written and read back, but the
+    /// package brings out only port A — which is why the 8912 has 28 pins where
+    /// the 8910 has 40. Anything attached here would be attached to nothing.
+    /// </remarks>
+    public Func<byte>? PortBInput { get; set; }
+
+    /// <summary>True when register 7 bit 6 makes port A an output.</summary>
+    public bool PortAIsOutput => (_registers[7] & 0x40) != 0;
+
+    /// <summary>True when register 7 bit 7 makes port B an output.</summary>
+    public bool PortBIsOutput => (_registers[7] & 0x80) != 0;
+
     // Per-channel square-wave state.
     private readonly int[] _toneCounter = new int[3];
     private readonly bool[] _toneOutput = new bool[3];
@@ -117,10 +146,9 @@ public sealed class Ay38912 : IPortBus
         // Registers 14 and 15 are the I/O ports, not storage. Register 7 bit 6
         // sets port A's direction and bit 7 port B's; when a port is an input,
         // reading its register returns the external pins rather than whatever
-        // was last written. On a 128 the RS232/keypad socket is normally empty,
-        // so those pins float high.
-        if (SelectedRegister == 14 && (_registers[7] & 0x40) == 0) return 0xFF;
-        if (SelectedRegister == 15 && (_registers[7] & 0x80) == 0) return 0xFF;
+        // was last written. An unconnected pin floats high.
+        if (SelectedRegister == 14 && !PortAIsOutput) return PortAInput?.Invoke() ?? 0xFF;
+        if (SelectedRegister == 15 && !PortBIsOutput) return PortBInput?.Invoke() ?? 0xFF;
 
         return (byte)(_registers[SelectedRegister] & RegisterMask(SelectedRegister));
     }
@@ -141,6 +169,10 @@ public sealed class Ay38912 : IPortBus
             // even when the value is unchanged. Music drivers rely on this to
             // retrigger a note, so it must not be optimised into a no-op.
             if (SelectedRegister == 13) RestartEnvelope();
+
+            // A port configured as an output drives its pins as soon as the
+            // latch changes.
+            if (SelectedRegister == 14 && PortAIsOutput) PortAOutput?.Invoke(_registers[14]);
         }
     }
 
@@ -164,7 +196,24 @@ public sealed class Ay38912 : IPortBus
     /// <paramref name="tStates"/> of emulated time, and mixes the three channels
     /// into it.
     /// </summary>
-    public void Render(Span<short> buffer, ulong tStates)
+    public void Render(Span<short> buffer, ulong tStates) => Render(buffer, default, default, tStates);
+
+    /// <summary>
+    /// Renders the three channels separately, so a host can pan them.
+    /// </summary>
+    /// <remarks>
+    /// The chip has three independent analogue outputs; mixing them to one is
+    /// something the machine does, not the chip. The 128 and the CPC both wire
+    /// them together, so <see cref="Render(Span{short}, ulong)"/> is what they
+    /// use — but a host wanting the ACB or ABC stereo those machines never had
+    /// needs the channels apart, and that is a property of the chip rather than
+    /// a missing feature of it.
+    ///
+    /// Pass <c>default</c> for <paramref name="left"/> and
+    /// <paramref name="right"/> to get the plain mono mix in
+    /// <paramref name="buffer"/>.
+    /// </remarks>
+    public void Render(Span<short> buffer, Span<short> left, Span<short> right, ulong tStates)
     {
         if (buffer.Length == 0) return;
 
@@ -193,6 +242,7 @@ public sealed class Ay38912 : IPortBus
             AdvanceEnvelope(envTicks);
 
             int mixed = 0;
+            Array.Clear(_channelOut);
 
             for (int ch = 0; ch < 3; ch++)
             {
@@ -220,12 +270,20 @@ public sealed class Ay38912 : IPortBus
                 // Bit 4 hands the channel's amplitude to the envelope generator.
                 byte volumeReg = _registers[8 + ch];
                 int level = (volumeReg & 0x10) != 0 ? EnvelopeLevel : volumeReg & 0x0F;
-                mixed += VolumeTable[level];
+
+                _channelOut[ch] = VolumeTable[level];
+                mixed += _channelOut[ch];
             }
 
             buffer[i] = (short)Math.Clamp(mixed, short.MinValue, short.MaxValue);
+
+            if (i < left.Length) left[i] = (short)Math.Clamp(_channelOut[0] + _channelOut[1], short.MinValue, short.MaxValue);
+            if (i < right.Length) right[i] = (short)Math.Clamp(_channelOut[2] + _channelOut[1], short.MinValue, short.MaxValue);
         }
     }
+
+    /// <summary>Each channel's contribution to the sample just rendered.</summary>
+    private readonly int[] _channelOut = new int[3];
 
     // ── Noise ────────────────────────────────────────────────────────────────
 

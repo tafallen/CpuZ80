@@ -62,7 +62,12 @@ public sealed class CpcMachine : ICpuHost
             ? new CpcKeyboard(keyboard)
             : NullCpcKeyboard.Instance;
 
-        Ppi = new Ppi8255(Psg, matrix);
+        Ppi = new Ppi8255(Psg);
+
+        // The keyboard is wired to the PSG's I/O port A, with the row selected
+        // by the PPI. Reading a key therefore goes CPU -> PPI -> PSG -> matrix,
+        // which is why it is attached here rather than intercepted in the PPI.
+        Psg.PortAInput = () => matrix.ReadRow(Ppi.SelectedKeyboardRow);
         Video = new CpcVideo(Crtc, GateArray, Memory);
         _romSelect = new RomSelectPort(Memory);
 
