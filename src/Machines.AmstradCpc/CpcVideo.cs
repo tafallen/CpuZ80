@@ -14,7 +14,8 @@ namespace Machines.AmstradCpc;
 public sealed class CpcVideo
 {
     /// <summary>
-    /// Frame width: 640 display pixels plus a 64-pixel border either side.
+    /// Frame width: enough for the standard 640-pixel display with a border
+    /// either side.
     /// </summary>
     /// <remarks>
     /// The canvas is in mode 2 units — the highest resolution — so every mode
@@ -25,8 +26,8 @@ public sealed class CpcVideo
     public const int Width = 768;
 
     /// <summary>
-    /// Frame height: 400 display lines plus a 72-line border, i.e. every scanline
-    /// doubled.
+    /// Frame height: enough for the standard 200 scanlines with every line
+    /// doubled, plus a border.
     /// </summary>
     /// <remarks>
     /// The horizontal axis is in mode 2 units, so a mode 1 pixel is two wide.
@@ -37,9 +38,18 @@ public sealed class CpcVideo
     /// </remarks>
     public const int Height = 544;
 
-    private const int BorderWidth = 64;
-    private const int BorderHeight = 72;
     private const int LineScale = 2;
+
+    /// <summary>
+    /// Canvas pixels one CRTC character occupies, in every mode.
+    /// </summary>
+    /// <remarks>
+    /// A character is always two display bytes, and each mode's pixels-per-byte
+    /// and scale multiply out to eight — so a mode change alters the pixel size
+    /// but never the width of the picture. That invariant is what lets one
+    /// canvas serve all four modes.
+    /// </remarks>
+    private const int PixelsPerCharacter = 16;
 
     private readonly uint[] _frame = new uint[Width * Height];
     private readonly Mc6845 _crtc;
@@ -57,11 +67,12 @@ public sealed class CpcVideo
     /// Expands one display byte into pixels, most significant pixel first.
     /// </summary>
     /// <remarks>
-    /// The bits of a pixel are <b>not adjacent</b>. In mode 0 a pixel's four
-    /// bits are spread across the byte at positions 0/2/4/6 and 1/3/5/7 rather
-    /// than being two nibbles, and mode 1 spreads two bits the same way.
-    /// Decoding contiguous groups produces a display that looks almost right,
-    /// which makes it easy to ship broken.
+    /// The bits of a pixel are <b>not adjacent</b>, and they run the opposite
+    /// way to intuition. A mode 0 byte is laid out A0 B0 A2 B2 A1 B1 A3 B3 from
+    /// bit 7 down, where A0 is pixel A's *least* significant bit — so pixel A
+    /// comes from bits 7, 3, 5 and 1 in that order. Decoding contiguous groups,
+    /// or assuming bit 7 is the most significant, produces a display that looks
+    /// almost right, which makes it easy to ship broken.
     /// </remarks>
     public static int[] DecodePixels(byte value, int mode)
     {
@@ -79,13 +90,15 @@ public sealed class CpcVideo
 
             case 1:
             {
-                // Four pixels, two bits each.
+                // Four pixels, two bits each, laid out A0 B0 C0 D0 A1 B1 C1 D1
+                // from bit 7 down. The high bit of the byte is the pen index's
+                // LOW bit, which is the part that catches people out.
                 var pixels = new int[4];
                 for (int i = 0; i < 4; i++)
                 {
-                    int high = (value >> (7 - i)) & 1;
-                    int low = (value >> (3 - i)) & 1;
-                    pixels[i] = (low << 1) | high;
+                    int bit0 = (value >> (7 - i)) & 1;
+                    int bit1 = (value >> (3 - i)) & 1;
+                    pixels[i] = (bit1 << 1) | bit0;
                 }
                 return pixels;
             }
@@ -100,8 +113,11 @@ public sealed class CpcVideo
 
             default:
             {
-                // Mode 3 is undocumented: mode 0's layout, but only two bits of
-                // each pixel are significant.
+                // Mode 3 is undocumented but not a guess: the layout is
+                // A0 B0 x x A1 B1 x x, so each pixel keeps mode 0's bits 0 and
+                // 1 — from byte bits 7 and 3 — and discards the other two.
+                // Taking mode 0's *top* two bits instead would be equally
+                // plausible and completely wrong.
                 int[] mode0 = DecodePixels(value, 0);
                 return [mode0[0] & 0x03, mode0[1] & 0x03];
             }
@@ -157,8 +173,18 @@ public sealed class CpcVideo
         int rows = Math.Max(1, _crtc.VerticalDisplayed);
         int linesPerRow = _crtc.MaxScanline + 1;
 
+        // The border is whatever the display does not cover, so its size comes
+        // from the CRTC rather than being a constant. Hardcoding it puts any
+        // non-standard geometry — overscan, a taller or narrower screen — in
+        // the wrong place on the canvas while still looking plausible.
+        int displayWidth = charsWide * PixelsPerCharacter;
+        int displayHeight = rows * linesPerRow * LineScale;
+
+        int originX = Math.Max(0, (Width - displayWidth) / 2);
+        int originY = Math.Max(0, (Height - displayHeight) / 2);
+
         int start = _crtc.StartAddress;
-        int y = BorderHeight;
+        int y = originY;
 
         for (int row = 0; row < rows; row++)
         {
@@ -166,7 +192,7 @@ public sealed class CpcVideo
             {
                 if (y < 0 || y + LineScale > Height) continue;
 
-                int x = BorderWidth;
+                int x = originX;
                 int rowAddress = start + row * charsWide;
 
                 for (int ch = 0; ch < charsWide; ch++)

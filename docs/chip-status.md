@@ -28,7 +28,7 @@ Last audited: 2026-08-18.
 | **`Ppi8255`** | CPC | **Partial** — mode 0 only | The control word is stored but never acted on: port direction bits are ignored, so port A always reads as input and port B is hardwired as input. Modes 1 and 2 (strobed I/O) absent | Low for the CPC, which uses mode 0 only |
 | **`Upd765a`** (FDC) | +3, CPC (planned) | **Partial** — 9 of ~15 commands | Read Track, Scan Equal/Low/High. Read Deleted aliased to Read Data (skip bit ignored); Write Deleted aliased to Write Data (no control mark set). Format fills existing sectors rather than reshaping the track, so geometry cannot change. **No timing at all** — RQM always set, instant seeks, no rotational latency | Medium — blocks copy-protected and timing-dependent disks |
 | **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
-| **`CpcVideo`** | CPC | **Near complete** | Mode 3 was derived by reasoning ("mode 0 masked to two bits") rather than from a reference, and is untested. Modes 0-2 are tested against known bit patterns | Low — mode 3 is undocumented and rare |
+| **`CpcVideo`** | CPC | **Complete** | — | — |
 | **`SinclairTapeAdapter`** | ZX80/81 | **Complete** | — | — |
 | **`ZxSpectrumTapeAdapter`** | Spectrum family | **Partial** — read only | `WriteBit` is an empty stub, so saving to tape silently does nothing. Playback is already T-state timed | Low, but silent — **missed by the first pass of this audit** |
 | **`AmstradGateArray`** | CPC | **Complete** for the 464/6128 | RMR2, which belongs to the Plus's 40489 ASIC, not this chip | None for these models |
@@ -58,6 +58,25 @@ wrong.
 Fixing this properly means driving `RunFrame` from the CRTC's own counters
 rather than a fixed T-state budget, which is a larger change than adding the
 missing registers.
+
+### `CpcVideo` — now complete
+
+Mode 3 was previously derived by reasoning rather than checked, and untested.
+Checking it against the published layout — `A0 B0 x x A1 B1 x x` from bit 7 down
+— confirmed the derivation was right: each pixel keeps mode 0's index bits 0 and
+1, from byte bits 7 and 3. Taking mode 0's *top* two bits instead would have been
+equally plausible and completely wrong, so it is now pinned by tests.
+
+The real gap was the border, which was two hardcoded constants. The border is
+whatever the display does not cover, so its size has to come from the CRTC:
+with it fixed, any non-standard geometry — a narrower screen, a taller one,
+overscan — rendered in the wrong place on the canvas while still looking
+plausible. The origin is now derived, which leaves the standard 40x25 screen
+pixel-identical and puts everything else where it belongs.
+
+One invariant makes this work: a CRTC character is always 16 canvas pixels wide
+whatever the mode, because two display bytes times the mode's pixels-per-byte
+times its scale always comes to sixteen.
 
 ### `SinclairTapeAdapter` and `AmstradGateArray` — now complete
 
