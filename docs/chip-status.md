@@ -30,7 +30,7 @@ Last audited: 2026-08-18.
 | **`Ay38912`** (PSG) | 128, +2, +3, CPC | **Near complete** | I/O ports (registers 14 and 15) stubbed to `0xFF` unless configured as outputs. Mono only, no stereo panning | Low — both machines are mono, and register 14 is intercepted by the PPI on the CPC |
 | **`CpcVideo`** | CPC | **Complete** | — | — |
 | **`SinclairTapeAdapter`** | ZX80/81 | **Complete** | — | — |
-| **`ZxSpectrumTapeAdapter`** | Spectrum family | **Partial** — read only | `WriteBit` is an empty stub, so saving to tape silently does nothing. Playback is already T-state timed | Low, but silent — **missed by the first pass of this audit** |
+| **`ZxSpectrumTapeAdapter`** | Spectrum family | **Complete** | — | — |
 | **`AmstradGateArray`** | CPC | **Complete** for the 464/6128 | RMR2, which belongs to the Plus's 40489 ASIC, not this chip | None for these models |
 | **`CpcMemory`** | CPC | Complete | — | — |
 | **`Zx128MemoryPager`** | 128, +2 | Complete | — | — |
@@ -58,6 +58,20 @@ wrong.
 Fixing this properly means driving `RunFrame` from the CRTC's own counters
 rather than a fixed T-state budget, which is a larger change than adding the
 missing registers.
+
+### `ZxSpectrumTapeAdapter` — now complete
+
+`WriteBit` was an empty stub, so a SAVE produced nothing at all. Recording now
+decodes MIC edges against the same pulse widths playback uses — 2168 pilot,
+667/735 sync, 855 and 1710 for data bits — reassembles them into `.TAP` blocks
+and writes a valid file. `zxspec --save-tape <path>` writes it on exit.
+
+Building it exposed a robustness problem worth recording. A 1 bit is 1710
+T-states and a pilot pulse is 2168, so a percentage tolerance around the pilot
+reaches down over the bit: at 20% the boundary sat **24 T-states** above a 1 bit.
+Exact-width tests passed by luck, and the smallest jitter turned a data bit into
+a new pilot tone and silently truncated the block. The split is now the midpoint
+between the two, and there is a test that feeds deliberately jittered pulses.
 
 ### `Mc6845` — complete
 
