@@ -16,6 +16,21 @@ namespace Machines.ZxSpectrum128;
 /// </remarks>
 public sealed class Zx128Machine
 {
+    /// <summary>The Z80 runs at 3.5469 MHz on this machine.</summary>
+    public const int ClockHz = 3_546_900;
+
+    /// <summary>
+    /// The AY is clocked at half the CPU clock, which is what its own
+    /// <c>Ay38912.ClockHz</c> says.
+    /// </summary>
+    /// <remarks>
+    /// Render takes PSG clock cycles, not CPU T-states. Passing T-states
+    /// straight through ran every channel at twice its true rate, so all music
+    /// played an octave too high — audible on any tune, and invisible to a test
+    /// that only asks whether the output changed.
+    /// </remarks>
+    public const int PsgClockDivider = 2;
+
     private const int BankSize = 0x4000;
     private const int BankCount = 8;
     private const int RomSize = 0x4000;
@@ -217,11 +232,11 @@ public sealed class Zx128Machine
             if (elapsed > 0)
             {
                 // One frame at 44.1 kHz is ~882 samples.
-                int sampleCount = Math.Min(_ayBuffer.Length, (int)(elapsed * 44100 / 3546900));
+                int sampleCount = Math.Min(_ayBuffer.Length, (int)(elapsed * 44100 / ClockHz));
                 if (sampleCount > 0)
                 {
                     var span = _ayBuffer.AsSpan(0, sampleCount);
-                    Ay.Render(span, elapsed);
+                    Ay.Render(span, elapsed / PsgClockDivider);
                     _audioSink.SubmitSamples(span, 44100);
                 }
             }

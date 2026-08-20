@@ -829,7 +829,7 @@ bulk-copy spans rather than moving one sample at a time.
 so it cannot be exercised headlessly — this change cannot be covered by the test
 suite and needs a manual run with audio.
 
-### FU-006 — The 128 and +3 clock the AY from the Z80 clock
+### FU-006 — RESOLVED: the 128 and +3 clocked the AY from the Z80 clock
 
 `Zx128Machine.RenderFrame` and `Plus3Machine.RenderFrame` both call
 `Ay.Render(span, elapsed)` where `elapsed` is Z80 T-states at 3.5469 MHz. The
@@ -847,6 +847,16 @@ listening check rather than riding along with CPC work.
 **How to apply:** divide by the CPU-to-PSG ratio at the call site, as
 `CpcMachine.RenderFrame` does, and add a tone-period edge-rate test like
 `AudioTests.ThePsgIsClockedAtAQuarterOfTheCpuClock`.
+
+**Done 2026-08-20.** Both machines now divide by `PsgClockDivider`. Each got its
+own edge-rate test, and both were checked by reverting the fix and confirming
+they fail: 458 edges with the bug against about 217 without, exactly the octave.
+
+Two things worth keeping from this one. Every existing audio test asked whether
+the output *changed*, which it did — at twice the right rate; only a test that
+measures the rate could catch it. And the two machines have separate copies of
+the audio path, so each needed its own fix and its own guard: a shared bug fixed
+in one copy stays in the other.
 
 ### FU-004 — Wait states from an instruction's final memory access are deferred
 
