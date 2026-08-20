@@ -157,11 +157,16 @@ public sealed class CpcMemory
     /// <summary>The RAM bank currently mapped into <paramref name="window"/> (0-3).</summary>
     public int BankAt(int window)
     {
-        int bank = RamConfigs[RamConfig][window];
+        // Banking is decoded by the expansion PAL, not the Gate Array. A 64K
+        // machine has no PAL, so the register does nothing at all and the map
+        // stays 0,1,2,3 however it is written.
+        //
+        // Masking the bank number instead would be wrong in a way that looks
+        // reasonable: config 3 would put base bank 3 at 0x4000 on a machine
+        // that cannot bank at all.
+        if (!Has128K) return window;
 
-        // A 464 has only the base 64K. Selecting a configuration that reaches
-        // into the second bank has nothing to select, so it reads back as base.
-        return bank < Banks.Length ? bank : bank & 0x03;
+        return RamConfigs[RamConfig][window];
     }
 
     private void ApplyMapping()

@@ -6,7 +6,7 @@ string? romPath = null;    // combined OS + BASIC image
 string? osPath = null;
 string? basicPath = null;
 string? amsdosPath = null;
-bool has128K = true;
+CpcModel model = CpcModel.Cpc6128;
 int scale = 2;
 
 for (int i = 0; i < args.Length; i++)
@@ -17,7 +17,9 @@ for (int i = 0; i < args.Length; i++)
         case "--os":     osPath     = args[++i]; break;
         case "--basic":  basicPath  = args[++i]; break;
         case "--amsdos": amsdosPath = args[++i]; break;
-        case "--464":    has128K    = false; break;
+        case "--464":    model      = CpcModel.Cpc464; break;
+        case "--664":    model      = CpcModel.Cpc664; break;
+        case "--6128":   model      = CpcModel.Cpc6128; break;
         case "--scale":  scale      = int.Parse(args[++i]); break;
         default:
             Console.Error.WriteLine($"Unknown argument: {args[i]}");
@@ -59,10 +61,9 @@ else
     Console.WriteLine($"OS: {Path.GetFileName(osPath)}   BASIC: {Path.GetFileName(basicPath)}");
 }
 
-using var host = new RaylibHost(
-    has128K ? "Amstrad CPC 6128" : "Amstrad CPC 464", scale);
+using var host = new RaylibHost(model.DisplayName(), scale);
 
-var machine = new CpcMachine(os, basic, keyboard: host, audio: host, has128K: has128K);
+var machine = new CpcMachine(model, os, basic, keyboard: host, audio: host);
 
 if (amsdosPath is not null)
 {
@@ -70,6 +71,14 @@ if (amsdosPath is not null)
     machine.Memory.AddUpperRom(7, File.ReadAllBytes(amsdosPath));
     Console.WriteLine($"AMSDOS: {Path.GetFileName(amsdosPath)} (upper ROM 7)");
 }
+else if (model.HasDiskDrive())
+{
+    Console.WriteLine("No AMSDOS ROM supplied, so the drive is fitted but the disk commands are absent.");
+}
+
+Console.WriteLine(
+    $"{model.DisplayName()}: {(model.Has128K() ? 128 : 64)}K, " +
+    $"{(model.HasDiskDrive() ? "3\" disk" : "cassette")}");
 
 machine.Reset();
 Console.WriteLine($"PC after reset: ${machine.Cpu.PC:X4}   {CpcMachine.FrameCycles} T-states/frame");
@@ -90,11 +99,17 @@ static void PrintUsage()
 
         Options:
           --amsdos <path>  Disk ROM, fitted at upper ROM 7
-          --464            A 464: 64K rather than 128K
+          --464            Amstrad CPC 464: 64K, cassette, BASIC 1.0
+          --664            Amstrad CPC 664: 64K, 3" disk, BASIC 1.1
+          --6128           Amstrad CPC 6128: 128K, 3" disk (the default)
           --scale <n>      Window scale factor (default: 2)
 
         A combined image holds the 16K OS followed by 16K of BASIC. A 128-byte
         AMSDOS header is detected and stripped, so the images as distributed
         work unmodified.
+
+        Each model needs its own ROMs: the 464 has BASIC 1.0, the 664 and 6128
+        BASIC 1.1. Passing one model's ROMs with another model's flag will boot
+        something, but it will not be that machine.
         """);
 }

@@ -25,9 +25,29 @@ structurally different from anything already in this repo:
    listens on a *different* address line being low or high, and several respond
    to overlapping addresses.
 
-The 464 and the 6128 are the same architecture: 64K versus 128K, tape versus
-disk, BASIC 1.0 versus 1.1. One implementation covers both, with the extra RAM
-and the disk ROM optional — the same shape as the +2A/+3 relationship.
+The 464, 664 and 6128 are the same architecture with different fittings, and
+`CpcModel` selects between them:
+
+| | RAM | Storage | BASIC | Gate Array |
+|---|---|---|---|---|
+| 464 | 64K | cassette | 1.0 | 40007 |
+| 664 | 64K | 3" disk | 1.1 | 40008 |
+| 6128 | 128K | 3" disk | 1.1 | 40010 |
+
+Three differences reach the emulation rather than just the ROM images:
+
+- **A 64K machine cannot bank at all.** Banking is decoded by the expansion PAL,
+  which a 464 and a 664 do not have, so the register does nothing — not
+  something approximate. Masking the bank number instead would put base bank 3
+  at `&4000` in configuration 3 on a machine with no second bank to speak of.
+- **The CPC's floppy ports are not the +3's.** `&FA7E` is a motor latch of its
+  own and `&FB7E`/`&FB7F` are the controller, where the +3 uses `0x2FFD`/`0x3FFD`
+  and keeps its motor bit in a paging port. The same `Upd765a` serves both, with
+  each machine decoding its own addresses.
+- **The cassette is real hardware on a 464.** Port C bit 4 is the motor and bit 5
+  the write data — that way round — and port B bit 7 is the read line. The read
+  line is sampled as the machine runs, because the firmware measures how long a
+  level holds.
 
 ## 2. The Gate Array
 

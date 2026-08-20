@@ -44,8 +44,29 @@ public sealed class Ppi8255 : IPortBus
     /// <summary>Manufacturer ID in port B bits 3-1. 7 = Amstrad.</summary>
     public int ManufacturerId { get; set; } = 7;
 
-    /// <summary>Tape input, port B bit 7.</summary>
+    /// <summary>Cassette read data, port B bit 7.</summary>
     public bool TapeInput { get; set; }
+
+    /// <summary>Printer ready, port B bit 6. High means busy with nothing attached.</summary>
+    public bool PrinterReady { get; set; }
+
+    /// <summary>Expansion port present, port B bit 5.</summary>
+    public bool ExpansionPresent { get; set; }
+
+    /// <summary>
+    /// Cassette motor, port C bit 4. A 464 cannot load anything without it.
+    /// </summary>
+    public bool TapeMotorOn { get; private set; }
+
+    /// <summary>Cassette write data, port C bit 5.</summary>
+    public bool TapeOutput { get; private set; }
+
+    /// <summary>Raised when the cassette write line or the motor changes.</summary>
+    /// <remarks>
+    /// Saving is entirely about when the line moves, so the tape needs the edge
+    /// rather than a level it can poll.
+    /// </remarks>
+    public event Action? TapeChanged;
 
     /// <summary>
     /// What an input half of port C reads when nothing drives it. Nothing does
@@ -62,6 +83,8 @@ public sealed class Ppi8255 : IPortBus
         _portB = 0;
         _portC = 0;
         _control = 0x82;
+        TapeMotorOn = false;
+        TapeOutput = false;
     }
 
     // ── The control word ─────────────────────────────────────────────────────
@@ -185,6 +208,7 @@ public sealed class Ppi8255 : IPortBus
             case 2:
                 _portC = value;
                 UpdatePsg();
+                UpdateCassette();
                 break;
 
             case 3:
@@ -213,6 +237,7 @@ public sealed class Ppi8255 : IPortBus
         else _portC &= (byte)~(1 << bit);
 
         UpdatePsg();
+        UpdateCassette();
     }
 
     private byte ReadPortA()
@@ -252,10 +277,12 @@ public sealed class Ppi8255 : IPortBus
 
         byte value = 0;
 
-        if (VSync) value |= 0x01;
-        value |= (byte)((ManufacturerId & 0x07) << 1);
-        if (Is50Hz) value |= 0x10;
-        if (TapeInput) value |= 0x80;
+        if (VSync) value |= 0x01;                            // bit 0: VSync from the CRTC
+        value |= (byte)((ManufacturerId & 0x07) << 1);       // bits 3-1: manufacturer
+        if (Is50Hz) value |= 0x10;                           // bit 4: refresh rate link
+        if (ExpansionPresent) value |= 0x20;                 // bit 5: /EXP
+        if (PrinterReady) value |= 0x40;                     // bit 6: printer ready
+        if (TapeInput) value |= 0x80;                        // bit 7: cassette read
 
         return value;
     }
@@ -296,6 +323,26 @@ public sealed class Ppi8255 : IPortBus
         if (GroupBMode == 1) mask |= PortCStbB | PortCIbfB | PortCIntrB;
 
         return mask;
+    }
+
+    /// <summary>
+    /// Drives the cassette from port C bits 4 and 5.
+    /// </summary>
+    /// <remarks>
+    /// Bit 4 is the motor and bit 5 the write data — that way round. Guessing
+    /// puts the motor on the data line, which leaves a 464 unable to load
+    /// anything while the deck appears to run.
+    /// </remarks>
+    private void UpdateCassette()
+    {
+        bool motor = (_portC & 0x10) != 0;
+        bool output = (_portC & 0x20) != 0;
+
+        if (motor == TapeMotorOn && output == TapeOutput) return;
+
+        TapeMotorOn = motor;
+        TapeOutput = output;
+        TapeChanged?.Invoke();
     }
 
     /// <summary>

@@ -660,6 +660,21 @@ Implement the Intel 8255 Peripheral Programmable Interface. This chip acts as th
     - VSYNC bit in Port B correctly reflects the CRTC's vertical sync state.
     - Firmware correctly initializes the sound chip through the PPI protocol.
 
+- [x] **US-509 — CPC 464 and 664 models** ✅
+  `CpcModel` selects between the three machines. A 64K machine ignores the
+  banking register entirely rather than approximating it; the floppy controller
+  moves to the CPC's own `&FA7E`/`&FB7E` decoding; and the cassette lines are
+  wired — port C bit 4 motor, bit 5 write, port B bit 7 read, sampled per
+  scanline because the firmware times the level.
+
+  ⚠️ **Only 6128 ROMs are in the working copy**, so the 464 and 664 have never
+  been booted. The models are unit-tested and the 6128 is unaffected, but
+  "the 464 works" is not a claim that can be made yet. It needs BASIC 1.0 for
+  the 464 and BASIC 1.1 plus AMSDOS for the 664.
+
+  The 464 also cannot load anything until US-506 lands: the cassette interface
+  is complete but there is no `.CDT` to play through it.
+
 **US-506 — Amstrad Tape Drive (.CDT)**
 Implement the tape bitstreaming logic for the CPC 464. The Amstrad uses a frequency-modulated signal for tape storage, compatible with the Sinclair standard but with specific block headers.
 - **Tasks**:

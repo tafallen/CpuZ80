@@ -1,6 +1,7 @@
 using CpuZ80.Core;
 using Machines.Common;
 using Machines.ZxSpectrum128;
+using Machines.ZxSpectrumPlus3;
 
 namespace Machines.AmstradCpc;
 
@@ -39,6 +40,17 @@ public sealed class CpcMachine : ICpuHost
     public Ay38912 Psg { get; }
     public CpcVideo Video { get; }
 
+    /// <summary>Which machine this is.</summary>
+    public CpcModel Model { get; }
+
+    /// <summary>
+    /// The floppy controller, or null on a machine with no drive fitted.
+    /// </summary>
+    public Upd765a? Fdc { get; }
+
+    /// <summary>The cassette deck, or null when none is attached.</summary>
+    public ITapeDevice? Tape { get; }
+
     private readonly AddressDecoder _bus;
     private readonly PortDecoder _ports;
     private readonly RomSelectPort _romSelect;
@@ -50,9 +62,23 @@ public sealed class CpcMachine : ICpuHost
         IPhysicalKeyboard? keyboard = null,
         IAudioSink? audio = null,
         bool has128K = true)
+        : this(has128K ? CpcModel.Cpc6128 : CpcModel.Cpc464, lowerRom, upperRom, keyboard, audio)
     {
+    }
+
+    public CpcMachine(
+        CpcModel model,
+        byte[] lowerRom,
+        byte[] upperRom,
+        IPhysicalKeyboard? keyboard = null,
+        IAudioSink? audio = null,
+        ITapeDevice? tape = null)
+    {
+        Model = model;
+        Tape = tape;
+
         _bus = new AddressDecoder();
-        Memory = new CpcMemory(_bus, lowerRom, upperRom, has128K);
+        Memory = new CpcMemory(_bus, lowerRom, upperRom, model.Has128K());
 
         GateArray = new AmstradGateArray(Memory);
         Crtc = new Mc6845();
@@ -63,6 +89,11 @@ public sealed class CpcMachine : ICpuHost
             : NullCpcKeyboard.Instance;
 
         Ppi = new Ppi8255(Psg);
+
+        // Given the CPU's clock the controller models seek times and the disk's
+        // data rate rather than completing instantly. The clock is attached
+        // after the CPU exists.
+        if (model.HasDiskDrive()) Fdc = new Upd765a { ClockHz = ClockHz };
 
         // The keyboard is wired to the PSG's I/O port A, with the row selected
         // by the PPI. Reading a key therefore goes CPU -> PPI -> PSG -> matrix,
@@ -79,6 +110,10 @@ public sealed class CpcMachine : ICpuHost
         _ports.MapMirror(0x0000, 0x2000, 0xFFFF, _romSelect);  // A13 clear
         _ports.MapMirror(0x0000, 0x0800, 0xFFFF, Ppi);         // A11 clear
 
+        // The floppy controller sits on A10, at &FA7E and &FB7E — not where the
+        // +3 puts it, so it gets the CPC's own decoding.
+        if (Fdc is not null) _ports.MapMirror(0x0000, 0x0400, 0xFFFF, new CpcFdcPort(Fdc));
+
         Cpu = new Cpu(_bus, _ports, this)
         {
             // The Gate Array holds READY so no access completes off a
@@ -87,6 +122,18 @@ public sealed class CpcMachine : ICpuHost
         };
 
         GateArray.InterruptRequested += () => Cpu.IntPin = true;
+
+        if (Fdc is not null) Fdc.Clock = () => Cpu.TotalCycles;
+
+        // The cassette: the motor and the write line come from the PPI, and the
+        // read line goes back to it.
+        if (Tape is not null)
+        {
+            Ppi.TapeChanged += () =>
+            {
+                if (Ppi.TapeMotorOn) Tape.WriteBit(Ppi.TapeOutput, Cpu.TotalCycles);
+            };
+        }
 
         _audio = audio;
     }
@@ -101,6 +148,7 @@ public sealed class CpcMachine : ICpuHost
         Crtc.Reset();
         Ppi.Reset();
         Psg.Reset();
+        Fdc?.Reset();
 
         // Not TotalCycles + a line: RunFrame advances the target before running,
         // so pre-adding here would make the first line twice as long.
@@ -133,6 +181,12 @@ public sealed class CpcMachine : ICpuHost
 
         for (int line = 0; line < scanlines; line++)
         {
+            // The cassette read line is sampled as the machine runs: the
+            // firmware polls port B bit 7 and measures how long the level
+            // holds, so a level that only updates once a frame carries no data
+            // at all.
+            if (Tape is not null && Ppi.TapeMotorOn) Ppi.TapeInput = !Tape.ReadBit(Cpu.TotalCycles);
+
             bool vsync = line >= vsyncStart && line < vsyncEnd;
 
             // The Gate Array resynchronises its interrupt counter two HSyncs

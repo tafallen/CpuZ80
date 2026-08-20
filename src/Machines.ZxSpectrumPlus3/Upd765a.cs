@@ -210,6 +210,20 @@ public sealed class Upd765a : IPortBus
         if (IsStatusPort(port)) return MainStatus;
         if (!IsDataPort(port)) return 0xFF;
 
+        return ReadData();
+    }
+
+    /// <summary>
+    /// Reads the data register directly, without any port decoding.
+    /// </summary>
+    /// <remarks>
+    /// The +3 and the CPC put this controller at completely different addresses
+    /// — 0x2FFD/0x3FFD against &amp;FA7E/&amp;FB7E — so each machine decodes its
+    /// own ports and reaches the registers through here. Baking one machine's
+    /// decode into the chip would make it wrong on the other.
+    /// </remarks>
+    public byte ReadData()
+    {
         if (_phase == Phase.Execution && _transfer == Transfer.Read)
         {
             if (WaitingForData) return 0xFF;
@@ -243,6 +257,12 @@ public sealed class Upd765a : IPortBus
     {
         if (!IsDataPort(port)) return;
 
+        WriteData(value);
+    }
+
+    /// <summary>Writes the data register directly, without any port decoding.</summary>
+    public void WriteData(byte value)
+    {
         if (_phase == Phase.Execution && _transfer != Transfer.Read)
         {
             if (WaitingForData) return;
