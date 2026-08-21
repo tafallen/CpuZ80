@@ -675,7 +675,26 @@ Implement the Intel 8255 Peripheral Programmable Interface. This chip acts as th
   The 464 also cannot load anything until US-506 lands: the cassette interface
   is complete but there is no `.CDT` to play through it.
 
-**US-506 — Amstrad Tape Drive (.CDT)**
+- [x] **US-506 — Amstrad tape drive (`.CDT`)** ✅
+  Research and notes: [amstrad-cpc-tape.md](./amstrad-cpc-tape.md).
+
+  `CdtTape` plays `.CDT` images: blocks 0x10, 0x11, 0x12, 0x13, 0x14 and 0x20,
+  with the grouping and metadata blocks skipped and their text kept. Wired to
+  the host as `--tape`.
+
+  **Every timing in the file is in Spectrum T-states at 3.5 MHz and is scaled
+  by 4/3.5 for the CPC.** Unscaled, every pulse is about 14% short — inside what
+  a forgiving loader tolerates and outside what a tight one does, so some tapes
+  would load and others fail with nothing to point at.
+
+  An unrecognised block is refused rather than skipped: TZX block lengths are
+  not derivable from the ID, so skipping means guessing where it ends, and
+  guessing wrong plays the rest of the file as noise.
+
+  ⚠️ **No real `.CDT` has been loaded**, and saving to one is not implemented.
+  Same standing caveat as US-477.
+
+**US-506 (original plan) — Amstrad Tape Drive (.CDT)**
 Implement the tape bitstreaming logic for the CPC 464. The Amstrad uses a frequency-modulated signal for tape storage, compatible with the Sinclair standard but with specific block headers.
 - **Tasks**:
     - Create `AmstradTapeAdapter : ITapeDevice`.

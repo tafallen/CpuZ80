@@ -6,6 +6,7 @@ string? romPath = null;    // combined OS + BASIC image
 string? osPath = null;
 string? basicPath = null;
 string? amsdosPath = null;
+string? tapePath = null;
 CpcModel model = CpcModel.Cpc6128;
 int scale = 2;
 
@@ -17,6 +18,7 @@ for (int i = 0; i < args.Length; i++)
         case "--os":     osPath     = args[++i]; break;
         case "--basic":  basicPath  = args[++i]; break;
         case "--amsdos": amsdosPath = args[++i]; break;
+        case "--tape":   tapePath   = args[++i]; break;
         case "--464":    model      = CpcModel.Cpc464; break;
         case "--664":    model      = CpcModel.Cpc664; break;
         case "--6128":   model      = CpcModel.Cpc6128; break;
@@ -63,7 +65,28 @@ else
 
 using var host = new RaylibHost(model.DisplayName(), scale);
 
-var machine = new CpcMachine(model, os, basic, keyboard: host, audio: host);
+CdtTape? tape = null;
+if (tapePath is not null)
+{
+    tape = new CdtTape(CpcMachine.ClockHz);
+    using var fs = File.OpenRead(tapePath);
+    tape.Load(fs);
+
+    Console.WriteLine(
+        $"Tape: {Path.GetFileName(tapePath)} — {tape.DataBlockCount} block(s), " +
+        $"{tape.LengthInTStates / (ulong)CpcMachine.ClockHz}s");
+
+    foreach (string description in tape.Descriptions) Console.WriteLine($"  {description}");
+
+    if (!model.HasCassette())
+    {
+        Console.WriteLine(
+            $"Note: a {model.DisplayName()} has no cassette deck. The tape is attached anyway, " +
+            "as an external recorder would be.");
+    }
+}
+
+var machine = new CpcMachine(model, os, basic, keyboard: host, audio: host, tape: tape);
 
 if (amsdosPath is not null)
 {
@@ -99,6 +122,7 @@ static void PrintUsage()
 
         Options:
           --amsdos <path>  Disk ROM, fitted at upper ROM 7
+          --tape   <path>  .CDT tape image to load from
           --464            Amstrad CPC 464: 64K, cassette, BASIC 1.0
           --664            Amstrad CPC 664: 64K, 3" disk, BASIC 1.1
           --6128           Amstrad CPC 6128: 128K, 3" disk (the default)
@@ -111,5 +135,7 @@ static void PrintUsage()
         Each model needs its own ROMs: the 464 has BASIC 1.0, the 664 and 6128
         BASIC 1.1. Passing one model's ROMs with another model's flag will boot
         something, but it will not be that machine.
+
+        With a tape attached, type RUN" and press ENTER, then start the tape.
         """);
 }
